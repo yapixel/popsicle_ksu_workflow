@@ -80,7 +80,7 @@ jobs:
         run: |
           cd kernel_workspace/common
           git clone  --branch=master https://github.com/backslashxx/KernelSU.git KernelSU
-          cd KernleSU
+          cd KernelSU
           git checkout 15efe7e9e14569d47c9188d6ebf3270eb6245685
           cd ..
           
