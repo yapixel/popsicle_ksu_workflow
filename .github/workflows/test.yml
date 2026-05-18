@@ -79,7 +79,7 @@ jobs:
       - name: Setup xxKSU
         run: |
           cd kernel_workspace/common
-          git clone  --branch=staing https://github.com/backslashxx/KernelSU.git KernelSU
+          git clone  --branch=staging https://github.com/backslashxx/KernelSU.git KernelSU
           
           ln -sf ../KernelSU/kernel drivers/kernelsu
           grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
@@ -102,7 +102,7 @@ jobs:
           
           # KSU 版本
           git clone --depth=1 https://github.com/TheSillyOk/sh.git scripts
-          KSU_VER=$(./scripts/get_ksuver.sh "backslashxx" "KernelSU" "master" || echo "unknown")
+          KSU_VER=$(./scripts/get_ksuver.sh "backslashxx" "KernelSU" "staging" || echo "unknown")
           echo "KSU version: $KSU_VER"
           echo "ksu_ver=$KSU_VER" >> $GITHUB_OUTPUT
           
