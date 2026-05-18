@@ -1,4 +1,4 @@
-name: Test Build with xxKSU staging
+name: Test Build with xxKSU 
 
 permissions:
   contents: write
@@ -79,7 +79,10 @@ jobs:
       - name: Setup xxKSU
         run: |
           cd kernel_workspace/common
-          git clone  --branch=staging https://github.com/backslashxx/KernelSU.git KernelSU
+          git clone  --branch=master https://github.com/backslashxx/KernelSU.git KernelSU
+          cd KernleSU
+          git checkout 15efe7e9e14569d47c9188d6ebf3270eb6245685
+          cd ..
           
           ln -sf ../KernelSU/kernel drivers/kernelsu
           grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
