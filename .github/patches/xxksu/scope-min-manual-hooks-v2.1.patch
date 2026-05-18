@@ -1,25 +1,19 @@
-From 38f7d8a7d230da2c59893c37cbdd5a604f8d20db Mon Sep 17 00:00:00 2001
-From: yapixel <yapixel@github.com>
-Date: Tue, 12 May 2026 11:03:01 +0000
-Subject: [PATCH] scope-min-manual-hooks-v2.1
+From: midori01 <midori01@users.noreply.github.com>
+Date: Mon, 18 May 2026 16:23:13 +0900
+Subject: [PATCH] scope-minimized manual hooks v2.1
 
-Integration of Scope Hooks and SELinux Hide for Kernel 6.12.
-
-Source:
-- Scope Hooks: https://github.com/backslashxx/KernelSU/issues/5
-- Integrated by yapixel for Android 16 GKI
 ---
  fs/exec.c                    | 12 ++++++++++++
- fs/open.c                    | 10 ++++++++++
- fs/stat.c                    | 29 +++++++++++++++++++++++++++--
+ fs/open.c                    |  9 +++++++++
+ fs/stat.c                    | 25 +++++++++++++++++++++++++
  kernel/reboot.c              |  8 ++++++++
- security/selinux/avc.c       |  9 +++++++++
- security/selinux/hooks.c     | 10 ++++++++++
- security/selinux/selinuxfs.c | 10 ++++++++++
- 7 files changed, 86 insertions(+), 2 deletions(-)
+ security/selinux/avc.c       |  6 ++++++
+ security/selinux/hooks.c     |  6 ++++++
+ security/selinux/selinuxfs.c |  6 ++++++
+ 7 files changed, 72 insertions(+)
 
 diff --git a/fs/exec.c b/fs/exec.c
-index ee89e0f..3548f8e 100644
+index ee89e0f3a..ebb0870de 100644
 --- a/fs/exec.c
 +++ b/fs/exec.c
 @@ -2054,12 +2054,21 @@ int kernel_execve(const char *kernel_filename,
@@ -48,42 +42,36 @@ index ee89e0f..3548f8e 100644
  		.is_compat = true,
  		.ptr.compat = __envp,
  	};
-+#ifdef CONFIG_KSU
++#ifdef CONFIG_KSU // 32-bit ksud and 32-on-64 support
 +	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
 +#endif
  	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
  }
  
 diff --git a/fs/open.c b/fs/open.c
-index 1ff947b..b23f5bb 100644
+index 1ff947b32..21fb05632 100644
 --- a/fs/open.c
 +++ b/fs/open.c
-@@ -374,6 +374,12 @@ COMPAT_SYSCALL_DEFINE6(fallocate, int, fd, int, mode, compat_arg_u64_dual(offset
+@@ -537,8 +537,17 @@ static long do_faccessat(int dfd, const char __user *filename, int mode, int fla
+ 	return res;
  }
- #endif
  
 +#ifdef CONFIG_KSU
-+__attribute__((hot))
++__attribute__((hot)) 
 +extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
 +				int *mode, int *flags);
 +#endif
 +
- /*
-  * access() needs to use the real uid/gid, not the effective uid/gid.
-  * We do this by temporarily clearing all FS-related capabilities and
-@@ -473,6 +479,10 @@ static long do_faccessat(int dfd, const char __user *filename, int mode, int fla
- 	unsigned int lookup_flags = LOOKUP_FOLLOW;
- 	const struct cred *old_cred = NULL;
- 
+ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ {
 +#ifdef CONFIG_KSU
 +	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
 +#endif
-+
- 	if (mode & ~S_IRWXO)	/* where's F_OK, X_OK, W_OK, R_OK? */
- 		return -EINVAL;
+ 	return do_faccessat(dfd, filename, mode, 0);
+ }
  
 diff --git a/fs/stat.c b/fs/stat.c
-index adb071b..d5d9edf 100644
+index adb071bc9..7bd27acc9 100644
 --- a/fs/stat.c
 +++ b/fs/stat.c
 @@ -495,6 +495,12 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
@@ -123,12 +111,10 @@ index adb071b..d5d9edf 100644
  SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
  {
  	struct kstat stat;
-@@ -516,7 +532,10 @@ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
- 
+@@ -517,6 +533,9 @@ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
  	if (!error)
  		error = cp_new_stat(&stat, statbuf);
--
-+		
+ 
 +#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_KPROBES_KSUD)
 +	ksu_handle_newfstat_ret(&fd, &statbuf);
 +#endif
@@ -145,12 +131,10 @@ index adb071b..d5d9edf 100644
  	return error;
  }
  
-@@ -657,7 +679,10 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
- {
+@@ -658,6 +680,9 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
  	struct kstat stat;
  	int error;
--
-+	
+ 
 +#ifdef CONFIG_KSU // 32-bit su
 +	ksu_handle_stat(&dfd, &filename, &flag); 
 +#endif
@@ -158,7 +142,7 @@ index adb071b..d5d9edf 100644
  	if (error)
  		return error;
 diff --git a/kernel/reboot.c b/kernel/reboot.c
-index bcc98b5..a51ffdf 100644
+index bcc98b547..a51ffdf2e 100644
 --- a/kernel/reboot.c
 +++ b/kernel/reboot.c
 @@ -715,6 +715,11 @@ DEFINE_MUTEX(system_transition_mutex);
@@ -184,45 +168,40 @@ index bcc98b5..a51ffdf 100644
  	if (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))
  		return -EPERM;
 diff --git a/security/selinux/avc.c b/security/selinux/avc.c
-index 29a9bf8..d4c20bb 100644
+index 29a9bf854..da5a16809 100644
 --- a/security/selinux/avc.c
 +++ b/security/selinux/avc.c
-@@ -648,6 +648,11 @@ static void avc_insert(u32 ssid, u32 tsid, u16 tclass,
-  * avc_audit_pre_callback - SELinux specific information
-  * will be called by generic audit code
-  * @ab: the audit buffer
-+
+@@ -748,6 +748,9 @@ static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
+ 	}
+ }
+ 
 +#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
 +extern void ksu_slow_avc_audit(u32 *tsid);
 +#endif
-+
-  * @a: audit_data
-  */
- static void avc_audit_pre_callback(struct audit_buffer *ab, void *a)
-@@ -661,6 +666,10 @@ static void avc_audit_pre_callback(struct audit_buffer *ab, void *a)
- 	audit_log_format(ab, "avc:  %s ", sad->denied ? "denied" : "granted");
+ /*
+  * This is the slow part of avc audit with big stack footprint.
+  * Note that it is non-blocking and can be called from under
+@@ -763,6 +766,9 @@ noinline int slow_avc_audit(u32 ssid, u32 tsid, u16 tclass,
+ 	if (WARN_ON(!tclass || tclass >= ARRAY_SIZE(secclass_map)))
+ 		return -EINVAL;
  
- 	if (av == 0) {
-+	
 +#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
 +	ksu_slow_avc_audit(&tsid);
 +#endif
- 		audit_log_format(ab, " null");
- 		return;
- 	}
+ 	if (!a) {
+ 		a = &stack_data;
+ 		a->type = LSM_AUDIT_DATA_NONE;
 diff --git a/security/selinux/hooks.c b/security/selinux/hooks.c
-index fc926d3..1803985 100644
+index fc926d3ca..af7f29bdf 100644
 --- a/security/selinux/hooks.c
 +++ b/security/selinux/hooks.c
-@@ -6585,10 +6585,20 @@ static int selinux_getprocattr(struct task_struct *p,
+@@ -6585,10 +6585,16 @@ static int selinux_getprocattr(struct task_struct *p,
  	return -EINVAL;
  }
  
-+
 +#ifdef CONFIG_KSU
 +extern int ksu_hide_setprocattr(const char *name, void *value, size_t size);
 +#endif
-+
  static int selinux_setprocattr(const char *name, void *value, size_t size)
  {
  	int attr = lsm_name_to_attr(name);
@@ -230,39 +209,33 @@ index fc926d3..1803985 100644
 +#ifdef CONFIG_KSU
 +	ksu_hide_setprocattr(name, value, size);
 +#endif
-+
-+
  	if (attr)
  		return selinux_lsm_setattr(attr, value, size);
  	return -EINVAL;
 diff --git a/security/selinux/selinuxfs.c b/security/selinux/selinuxfs.c
-index 8acbaa4..34dc010 100644
+index 8acbaa4f2..2c35ccc24 100644
 --- a/security/selinux/selinuxfs.c
 +++ b/security/selinux/selinuxfs.c
-@@ -668,6 +668,11 @@ static ssize_t sel_write_context(struct file *file, char *buf, size_t size)
- static ssize_t sel_read_checkreqprot(struct file *filp, char __user *buf,
- 				     size_t count, loff_t *ppos)
- {
-+
+@@ -820,6 +820,9 @@ static ssize_t (*const write_op[])(struct file *, char *, size_t) = {
+ 	[SEL_CONTEXT] = sel_write_context,
+ };
+ 
 +#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
 +extern void ksu_sel_write_context(struct file **file, char **buf, size_t *size);
 +#endif
-+
- 	char tmpbuf[TMPBUFLEN];
- 	ssize_t length;
+ static ssize_t selinux_transaction_write(struct file *file, const char __user *buf, size_t size, loff_t *pos)
+ {
+ 	ino_t ino = file_inode(file)->i_ino;
+@@ -833,6 +836,9 @@ static ssize_t selinux_transaction_write(struct file *file, const char __user *b
+ 	if (IS_ERR(data))
+ 		return PTR_ERR(data);
  
-@@ -678,6 +683,11 @@ static ssize_t sel_read_checkreqprot(struct file *filp, char __user *buf,
- 
- static ssize_t sel_write_checkreqprot(struct file *file, const char __user *buf,
- 				      size_t count, loff_t *ppos)
-+
 +#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
 +	ksu_sel_write_context(&file, &data, &size);
 +#endif
-+
- {
- 	char *page;
- 	ssize_t length;
+ 	rv = write_op[ino](file, data, size);
+ 	if (rv > 0) {
+ 		simple_transaction_set(file, rv);
 -- 
-2.53.0
+2.54.0
 
