@@ -1,3 +1,26 @@
+--- a/security/selinux/hooks.c
++++ b/security/selinux/hooks.c
+@@ -6585,10 +6585,20 @@
+ 	return -EINVAL;
+ }
+ 
++
++#ifdef CONFIG_KSU
++extern int ksu_hide_setprocattr(const char *name, void *value, size_t size);
++#endif
++
+ static int selinux_setprocattr(const char *name, void *value, size_t size)
+ {
+ 	int attr = lsm_name_to_attr(name);
+ 
++#ifdef CONFIG_KSU
++	ksu_hide_setprocattr(name, value, size);
++#endif
++
++
+ 	if (attr)
+ 		return selinux_lsm_setattr(attr, value, size);
+ 	return -EINVAL;
 --- a/security/selinux/avc.c
 +++ b/security/selinux/avc.c
 @@ -747,7 +747,10 @@
