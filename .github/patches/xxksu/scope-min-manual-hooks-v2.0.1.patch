@@ -7,9 +7,8 @@ Subject: [PATCH] scope-minimized manual hooks v2.0.1
  fs/open.c                    |  9 +++++++++
  fs/stat.c                    | 25 +++++++++++++++++++++++++
  kernel/reboot.c              |  8 ++++++++
- security/selinux/avc.c       |  6 ++++++
  security/selinux/selinuxfs.c |  6 ++++++
- 6 files changed, 66 insertions(+)
+ 5 files changed, 60 insertions(+)
 
 diff --git a/fs/exec.c b/fs/exec.c
 index ee89e0f3a..ebb0870de 100644
@@ -166,30 +165,6 @@ index bcc98b547..a51ffdf2e 100644
  	/* We only trust the superuser with rebooting the system. */
  	if (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))
  		return -EPERM;
-diff --git a/security/selinux/avc.c b/security/selinux/avc.c
-index 29a9bf854..da5a16809 100644
---- a/security/selinux/avc.c
-+++ b/security/selinux/avc.c
-@@ -748,6 +748,9 @@ static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
- 	}
- }
- 
-+#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
-+extern void ksu_slow_avc_audit(u32 *tsid);
-+#endif
- /*
-  * This is the slow part of avc audit with big stack footprint.
-  * Note that it is non-blocking and can be called from under
-@@ -763,6 +766,9 @@ noinline int slow_avc_audit(u32 ssid, u32 tsid, u16 tclass,
- 	if (WARN_ON(!tclass || tclass >= ARRAY_SIZE(secclass_map)))
- 		return -EINVAL;
- 
-+#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
-+	ksu_slow_avc_audit(&tsid);
-+#endif
- 	if (!a) {
- 		a = &stack_data;
- 		a->type = LSM_AUDIT_DATA_NONE;
 diff --git a/security/selinux/selinuxfs.c b/security/selinux/selinuxfs.c
 index 8acbaa4f2..2c35ccc24 100644
 --- a/security/selinux/selinuxfs.c
@@ -215,4 +190,4 @@ index 8acbaa4f2..2c35ccc24 100644
  	if (rv > 0) {
  		simple_transaction_set(file, rv);
 -- 
-2.54.0
+2.55.0
