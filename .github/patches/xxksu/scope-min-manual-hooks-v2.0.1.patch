@@ -7,8 +7,7 @@ Subject: [PATCH] scope-minimized manual hooks v2.0.1
  fs/open.c                    |  9 +++++++++
  fs/stat.c                    | 25 +++++++++++++++++++++++++
  kernel/reboot.c              |  8 ++++++++
- security/selinux/selinuxfs.c |  6 ++++++
- 5 files changed, 60 insertions(+)
+ 4 files changed, 54 insertions(+)
 
 diff --git a/fs/exec.c b/fs/exec.c
 index ee89e0f3a..ebb0870de 100644
@@ -165,29 +164,5 @@ index bcc98b547..a51ffdf2e 100644
  	/* We only trust the superuser with rebooting the system. */
  	if (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))
  		return -EPERM;
-diff --git a/security/selinux/selinuxfs.c b/security/selinux/selinuxfs.c
-index 8acbaa4f2..2c35ccc24 100644
---- a/security/selinux/selinuxfs.c
-+++ b/security/selinux/selinuxfs.c
-@@ -820,6 +820,9 @@ static ssize_t (*const write_op[])(struct file *, char *, size_t) = {
- 	[SEL_CONTEXT] = sel_write_context,
- };
- 
-+#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
-+extern void ksu_sel_write_context(struct file **file, char **buf, size_t *size);
-+#endif
- static ssize_t selinux_transaction_write(struct file *file, const char __user *buf, size_t size, loff_t *pos)
- {
- 	ino_t ino = file_inode(file)->i_ino;
-@@ -833,6 +836,9 @@ static ssize_t selinux_transaction_write(struct file *file, const char __user *b
- 	if (IS_ERR(data))
- 		return PTR_ERR(data);
- 
-+#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
-+	ksu_sel_write_context(&file, &data, &size);
-+#endif
- 	rv = write_op[ino](file, data, size);
- 	if (rv > 0) {
- 		simple_transaction_set(file, rv);
 -- 
 2.55.0
