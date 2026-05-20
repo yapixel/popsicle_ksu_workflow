@@ -1,6 +1,6 @@
 From: midori01 <midori01@users.noreply.github.com>
 Date: Mon, 18 May 2026 16:23:13 +0900
-Subject: [PATCH] scope-minimized manual hooks v2.1
+Subject: [PATCH] scope-minimized manual hooks v2.0.1
 
 ---
  fs/exec.c                    | 12 ++++++++++++
