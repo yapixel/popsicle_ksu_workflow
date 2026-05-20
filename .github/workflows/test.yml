@@ -79,11 +79,8 @@ jobs:
       - name: Setup xxKSU
         run: |
           cd kernel_workspace/common
-          git clone  --branch=master https://github.com/backslashxx/KernelSU.git KernelSU
-          cd KernelSU
-          git fetch origin 15efe7e9e14569d47c9188d6ebf3270eb6245685
-          git checkout 15efe7e9e14569d47c9188d6ebf3270eb6245685
-          cd ..
+          git clone  --branch=staging https://github.com/backslashxx/KernelSU.git KernelSU
+          
           
           ln -sf ../KernelSU/kernel drivers/kernelsu
           grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
@@ -91,7 +88,7 @@ jobs:
       - name: Integrate xxKSU
         run: |
           cd kernel_workspace/common
-          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/manual-security-hooks-v1.9.patch"
+          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/manual-security-hooks-v2.0.patch"
           patch -p1 -l  < "${{ github.workspace }}/.github/patches/xxksu/scope-min-manual-hooks-v2.0.1.patch"
          
       - name: Collect build metadata
