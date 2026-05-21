@@ -115,7 +115,7 @@ jobs:
         with:
           defconfig_path: "kernel_workspace/common/arch/arm64/configs/gki_defconfig"
           build_config_path: "kernel_workspace/common/build.config.gki"
-          variant: "xxksu_staging"
+          variant: "xxksu"
           enable_susfs: "false"
 
       - name: Compile Kernel
