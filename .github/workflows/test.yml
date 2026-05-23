@@ -9,8 +9,10 @@ on:
       sub_level:
         required: true
         type: string
+
   push:
     branches: [ main ]
+
   workflow_dispatch:
     inputs:
       sub_level:
@@ -116,7 +118,7 @@ jobs:
           echo "KSU version: $KSU_VER"
           echo "ksu_ver=$KSU_VER" >> $GITHUB_OUTPUT
           
-          # Build Date
+          # Build date
           BUILD_DATE=$(date +'%y%m%d')
           echo "Build date: $BUILD_DATE"
           echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
@@ -191,7 +193,7 @@ jobs:
           echo "编译后空间:"
           df -h
 
-      - name: Package & Boot-Ready Check
+      - name: Package Kernel ZIP and vmlinux ZIP
         run: |
           cd kernel_workspace
 
@@ -210,32 +212,32 @@ jobs:
           BUILD_DATE="${{ steps.meta.outputs.build_date }}"
 
           ZIP_NAME="KSU_popsicle_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}.zip"
-          VMLINUX_NAME="vmlinux_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}"
+          VMLINUX_RAW_NAME="vmlinux_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}"
+          VMLINUX_ZIP_NAME="vmlinux_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}.zip"
 
-          cp "$VMLINUX" "./$VMLINUX_NAME"
-
+          # Create flashable AnyKernel3 ZIP
           cd AnyKernel3
           zip -r9 "../$ZIP_NAME" *
           cd ..
 
-          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
-          echo "VMLINUX_NAME=$VMLINUX_NAME" >> $GITHUB_ENV
+          # Create separate vmlinux ZIP
+          cp "$VMLINUX" "./$VMLINUX_RAW_NAME"
+          zip -9 "$VMLINUX_ZIP_NAME" "$VMLINUX_RAW_NAME"
 
-      - name: Upload Build Artifact
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          echo "VMLINUX_ZIP_NAME=$VMLINUX_ZIP_NAME" >> $GITHUB_ENV
+
+          echo "Created files:"
+          ls -lh "$ZIP_NAME" "$VMLINUX_ZIP_NAME"
+
+      - name: Upload Kernel ZIP
         uses: actions/upload-artifact@v7.0.0
         with:
           name: kernel-xxksu
-          path: |
-            kernel_workspace/${{ env.ZIP_NAME }}
-            kernel_workspace/${{ env.VMLINUX_NAME }}
+          path: kernel_workspace/${{ env.ZIP_NAME }}
 
-  publish-release:
-    needs: build
-    uses: ./.github/workflows/release.yml
-    with:
-      ksu_variant: 'xxksu'
-      sub_level: ${{ inputs.sub_level || github.event.inputs.sub_level || '23' }}
-      kernel_ver: '6.12'
-      build_date: ${{ needs.build.outputs.build_date }}
-      clang_ver: ${{ needs.build.outputs.clang_ver }}
-    secrets: inherit
+      - name: Upload vmlinux ZIP
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: vmlinux-xxksu
+          path: kernel_workspace/${{ env.VMLINUX_ZIP_NAME }}
