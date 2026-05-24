@@ -94,9 +94,8 @@ runs:
         cat >> $DEFCONFIG <<-'EOF'
         CONFIG_KSU=y
         CONFIG_KSU_EXTRAS=y
-        CONFIG_KSU_LSM_SECURITY_HOOKS=n
-        CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
-        CONFIG_KSU_KPROBES_KSUD=y
+        CONFIG_KSU_HACK_ARM64_BRANCH_LINK=y
+        CONFIG_KSU_LSM_SECURITY_HOOKS=y
         EOF
         elif [[ "${{ inputs.variant }}" == *"kowsu"* ]]; then
           cat >> $DEFCONFIG <<-'EOF'
