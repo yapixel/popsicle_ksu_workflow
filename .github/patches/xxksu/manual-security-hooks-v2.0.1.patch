@@ -51,7 +51,7 @@ index cb999f0f8..b803cbb52 100644
  int security_file_permission(struct file *file, int mask)
  {
 +#ifdef CONFIG_KSU
-+	ksu_file_permission(file, mask);
++//	ksu_file_permission(file, mask);
 +#endif
  	return call_int_hook(file_permission, file, mask);
  }
@@ -61,7 +61,7 @@ index cb999f0f8..b803cbb52 100644
  			     int flags)
  {
 +#ifdef CONFIG_KSU
-+	ksu_task_fix_setuid(new, old, flags);
++//	ksu_task_fix_setuid(new, old, flags);
 +#endif
  	return call_int_hook(task_fix_setuid, new, old, flags);
  }
@@ -71,7 +71,7 @@ index cb999f0f8..b803cbb52 100644
  	struct lsm_static_call *scall;
  
 +#ifdef CONFIG_KSU
-+	ksu_hide_setprocattr(name, value, size);
++//	ksu_hide_setprocattr(name, value, size);
 +#endif
 +
  	lsm_for_each_hook(scall, setprocattr) {
