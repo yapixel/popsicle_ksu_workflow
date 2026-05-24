@@ -87,7 +87,7 @@ jobs:
         run: |
           cd kernel_workspace/common
 
-          git clone --branch=staging-hunt-callsite https://github.com/backslashxx/KernelSU.git KernelSU
+          git clone --branch=staging-test1 https://github.com/backslashxx/KernelSU.git KernelSU
           
           ln -sf ../KernelSU/kernel drivers/kernelsu
 
@@ -98,7 +98,7 @@ jobs:
         run: |
           cd kernel_workspace/common
 
-          #patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/manual-security-hooks-v2.0.patch"
+          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/manual-security-hooks-v2.0.patch"
           patch -p1 -l < "${{ github.workspace }}/.github/patches/xxksu/scope-min-manual-hooks-v2.2.patch"
 
       - name: Collect build metadata
