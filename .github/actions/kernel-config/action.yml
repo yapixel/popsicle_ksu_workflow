@@ -31,7 +31,7 @@ runs:
         # Core Bootability & Performance
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
         CONFIG_RUST=y
-        CONFIG_LOG_BUF_SHIFT=25
+        CONFIG_LOG_BUF_SHIFT=21
         CONFIG_ANDROID_BINDER_IPC_RUST=m
         CONFIG_TMPFS_XATTR=y
         CONFIG_TMPFS_POSIX_ACL=y
