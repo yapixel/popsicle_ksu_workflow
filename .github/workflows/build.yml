@@ -87,23 +87,17 @@ jobs:
           grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
           grep -q "kernelsu" drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
 
-      - name: Integrate xxKSU
-        run: |
-          cd kernel_workspace/common
-          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/manual-security-hooks-v2.0.patch"
-          patch -p1 -l  < "${{ github.workspace }}/.github/patches/xxksu/scope-min-manual-hooks-v2.2.patch"
-          
 
       - name: Collect build metadata
         id: meta
         run: |
-          # Clang 版本
+          # Clang 
           export PATH="$GITHUB_WORKSPACE/kernel_workspace/clang/bin:$PATH"
           CLANG_VER=$(clang --version | head -1 | grep -oP '\d+\.\d+\.\d+' | head -1)
           echo "Clang version: $CLANG_VER"
           echo "clang_ver=$CLANG_VER" >> $GITHUB_OUTPUT
           
-          # KSU 版本
+          # KSU 
           git clone --depth=1 https://github.com/TheSillyOk/sh.git scripts
           KSU_VER=$(./scripts/get_ksuver.sh "backslashxx" "KernelSU" "master" || echo "unknown")
           echo "KSU version: $KSU_VER"
