@@ -115,7 +115,7 @@ jobs:
           export PATH="$WORKDIR/kernel_workspace/rust/bin:$PATH"
           export PATH="$WORKDIR/kernel_workspace/clang-tools:$PATH"
           
-          # 打印编译器信息
+          
           echo "Clang version: $(clang --version | head -1)"
           echo "Rustc version: $(rustc -V 2>/dev/null | head -1)"
           echo "Bindgen version: $(bindgen --version 2>/dev/null | head -1)"
@@ -123,7 +123,7 @@ jobs:
           
           cd kernel_workspace/common
           
-          # 路径重映射
+          
           COMMON_REAL_PATH=$(pwd -P)
           ROOT_REAL_PATH=$(dirname "$COMMON_REAL_PATH")
           KCFLAGS=" -fdebug-prefix-map=$ROOT_REAL_PATH=."
@@ -132,7 +132,7 @@ jobs:
           KCFLAGS+=" -no-canonical-prefixes -O2 -pipe -Wno-error -fno-stack-protector -D__ANDROID_COMMON_KERNEL__"
           export KCFLAGS
           
-          # 配置工具链
+          
           export LLVM=1
           export LLVM_IAS=1
           export ARCH=arm64
@@ -149,18 +149,18 @@ jobs:
           export READELF=llvm-readelf
           export STRIP=llvm-strip
           
-          # 设置环境脚本
+          
           cp ${{ github.workspace }}/_setup_env.sh ./ 2>/dev/null || true
           chmod 777 ./*.sh 2>/dev/null || true
           source "./_setup_env.sh" 2>/dev/null || true
           
-          # 固定时间戳
+          
           export SOURCE_DATE_EPOCH=1757653061
           export KBUILD_BUILD_TIMESTAMP="Fri Sep 12 04:57:41 UTC 2025"
           export KBUILD_BUILD_HOST="build-host"
           export KBUILD_BUILD_USER="kleaf"
           
-          # 清理空间
+          
           sudo rm -rf /usr/share/dotnet &
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
