@@ -1,4 +1,4 @@
-name:  Build tiann KSU + SUSFS
+name:  Build KowSU + SUSFS
 
 on:
   workflow_dispatch:
@@ -67,10 +67,10 @@ jobs:
           echo "SUSFS_VERSION=${SUSFS_VERSION:-unknown}" >> $GITHUB_ENV
 
 
-      - name: Setup tiann KSU
+      - name: Setup KowSU
         run: |
           cd kernel_workspace/common
-          git clone --depth=1 --branch=main https://github.com/tiann/KernelSU KernelSU
+          git clone --depth=1 --branch=master https://github.com/KOWX712/KernelSU KernelSU
           ln -sf ../KernelSU/kernel drivers/kernelsu
           grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
           grep -q "kernelsu" drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
@@ -96,8 +96,8 @@ jobs:
 
           # 2. KSU-side SuSFS
           cd KernelSU
-          patch -p1 -l --fuzz=3 < "${{ env.SUSFS_DIR }}/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
-         
+          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/kowsu/10_enable_susfs_for_ksu.patch"
+          
 
       - name: Inject Defconfig Flags
         uses: ./.github/actions/kernel-config
@@ -183,12 +183,12 @@ jobs:
           cp "$IMAGE" ./AnyKernel3/ && cd AnyKernel3
 
           BUILD_DATE="$(date +'%y%m%d')"
-          ZIP_NAME="ksu_popsicle_6.12.${{ inputs.sub_level }}-${BUILD_DATE}.zip"
+          ZIP_NAME="kowsu_popsicle_6.12.${{ inputs.sub_level }}-${BUILD_DATE}.zip"
           zip -r9 "../$ZIP_NAME" *
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v7.0.0
         with:
-          name: kernel-ksu-susfs
+          name: kernel-kowsu-susfs
           path: kernel_workspace/${{ env.ZIP_NAME }}
