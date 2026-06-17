@@ -20,10 +20,7 @@ jobs:
     outputs:
       build_date: ${{ steps.pkg.outputs.build_date }}
       clang_ver: ${{ steps.set-outputs.outputs.clang_ver }}
-      ksu_ver: ${{ steps.meta.outputs.ksu_ver }}
-      susfs_ver: ${{ steps.meta.outputs.susfs_ver }}
       kernel_version: ${{ steps.meta.outputs.kernel_version }}
-      kernel_version_full: ${{ steps.meta.outputs.kernel_version_full }}
 
     steps:
       - name: Checkout Repository
@@ -87,12 +84,10 @@ jobs:
         run: |
           set -euo pipefail
           
-          # 1. 使用你的脚本提取 KSU 版本号
           chmod +x ./sh/get_ksuver.sh 2>/dev/null || true
           K_VER=$(./sh/get_ksuver.sh "backslashxx" "KernelSU" "${{ env.KSU_BRANCH }}" || echo "unknown")
           echo "ksu_ver=$K_VER" >> "$GITHUB_OUTPUT"
           
-          # 2. 从内核源码动态提取版本号
           echo "Extracting kernel version from source..."
           cd kernel_workspace/common
           KERNEL_V=$(grep -E '^VERSION =' Makefile | awk '{print $3}' | tr -d '\r')
@@ -114,7 +109,6 @@ jobs:
           echo "kernel_version=${KERNEL_VERSION_FULL}" >> "$GITHUB_OUTPUT"
           echo "kernel_version_full=${KERNEL_VERSION_FULL_WITH_SUB}" >> "$GITHUB_OUTPUT"
           
-          # 3. 提取 SuSFS 版本号
           SUSFS_PATH="${{ env.SUSFS_DIR }}/kernel_patches/include/linux/susfs.h"
           SUSFS_VER="unknown"
           if [ -f "$SUSFS_PATH" ]; then
@@ -122,7 +116,6 @@ jobs:
           fi
           echo "susfs_ver=$SUSFS_VER" >> "$GITHUB_OUTPUT"
           
-          # 终端打印输出
           echo "▶ KernelSU Version : $K_VER"
           echo "▶ Detected kernel version: ${KERNEL_VERSION_FULL_WITH_SUB}"
           echo "▶ SuSFS Version    : $SUSFS_VER"
@@ -210,6 +203,4 @@ jobs:
       kernel_ver: ${{ needs.build.outputs.kernel_version }}
       build_date: ${{ needs.build.outputs.build_date }}
       clang_ver: ${{ needs.build.outputs.clang_ver }}
-      ksu_ver: ${{ needs.build.outputs.ksu_ver }}
-      susfs_ver: ${{ needs.build.outputs.susfs_ver }}
     secrets: inherit
