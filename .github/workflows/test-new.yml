@@ -17,6 +17,7 @@ jobs:
     env:
       ANDROID_VERSION: 'android16'
       KSU_BRANCH: 'master'
+      SCRIPTS_REPO: 'https://github.com/TheSillyOk/sh'
     outputs:
       build_date: ${{ steps.pkg.outputs.build_date }}
       clang_ver: ${{ steps.set-outputs.outputs.clang_ver }}
@@ -78,6 +79,10 @@ jobs:
           cp -f KernelSU/kernel/policy/*.h include/ 2>/dev/null || true
           cp -f KernelSU/kernel/include/*.h include/ 2>/dev/null || true
           cp -f KernelSU/kernel/uapi/*.h include/uapi/ 2>/dev/null || true
+
+      - name: Clone Scripts Repository
+        run: |
+          git clone --depth=1 "${{ env.SCRIPTS_REPO }}" sh
 
       - name: Metadata Extraction
         id: meta
