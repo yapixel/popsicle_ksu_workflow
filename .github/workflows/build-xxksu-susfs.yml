@@ -147,24 +147,62 @@ jobs:
       - name: Compile Kernel
         run: |
           WORKDIR="$(pwd)"
-          export PATH="$WORKDIR/kernel_workspace/clang/bin:$WORKDIR/kernel_workspace/build-tools/bin:$WORKDIR/kernel_workspace/rust/bin:$WORKDIR/kernel_workspace/clang-tools:$PATH"
-          export RUSTC="$WORKDIR/kernel_workspace/rust/bin/rustc"
-          export BINDGEN="$WORKDIR/kernel_workspace/clang-tools/bindgen"
+          export PATH="$WORKDIR/kernel_workspace/clang/bin:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/clang-tools:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/rust/bin:$PATH"
           
-          CLANG_VERSION_STR=$(clang --version | head -1)
-          echo "CLANG_VER=$CLANG_VERSION_STR" >> $GITHUB_ENV
+          echo "Clang version: $(clang --version | head -1)"
+          echo "Rustc version: $(rustc -V 2>/dev/null | head -1)"
+          echo "Bindgen version: $(bindgen --version 2>/dev/null | head -1)"
+          echo "pahole version: $(pahole --version 2>/dev/null | head -1 || echo '未安装')"
           
           cd kernel_workspace/common
           
-          ROOT_REAL_PATH=$(dirname "$(pwd -P)")
-          KCFLAGS=" -fdebug-prefix-map=$ROOT_REAL_PATH=. -fmacro-prefix-map=$ROOT_REAL_PATH=. -ffile-prefix-map=$ROOT_REAL_PATH=. -no-canonical-prefixes -O2 -pipe -Wno-error -fno-stack-protector -D__ANDROID_COMMON_KERNEL__ -D__KLEAF__"
+          COMMON_REAL_PATH=$(pwd -P)
+          ROOT_REAL_PATH=$(dirname "$COMMON_REAL_PATH")
+          KCFLAGS=" -fdebug-prefix-map=$ROOT_REAL_PATH=."
+          KCFLAGS+=" -fmacro-prefix-map=$ROOT_REAL_PATH=."
+          KCFLAGS+=" -ffile-prefix-map=$ROOT_REAL_PATH=."
+          KCFLAGS+=" -no-canonical-prefixes -O2 -pipe -Wno-error -fno-stack-protector -D__ANDROID_COMMON_KERNEL__"
           export KCFLAGS
           
-          export LLVM=1 LLVM_IAS=1 ARCH=arm64 SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
-          export HOSTCC=clang HOSTLD=ld.lld CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf STRIP=llvm-strip
+          export LLVM=1
+          export LLVM_IAS=1
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export HOSTCC=clang
+          export HOSTLD=ld.lld
+          export CC=clang
+          export LD=ld.lld
+          export AR=llvm-ar
+          export NM=llvm-nm
+          export OBJCOPY=llvm-objcopy
+          export OBJDUMP=llvm-objdump
+          export READELF=llvm-readelf
+          export STRIP=llvm-strip
+          
+          cp ${{ github.workspace }}/_setup_env.sh ./ 2>/dev/null || true
+          chmod 777 ./*.sh 2>/dev/null || true
+          source "./_setup_env.sh" 2>/dev/null || true
+          
+          export SOURCE_DATE_EPOCH=1757653061
+          export KBUILD_BUILD_TIMESTAMP="Fri Sep 12 04:57:41 UTC 2025"
+          export KBUILD_BUILD_HOST="build-host"
+          export KBUILD_BUILD_USER="kleaf"
+          
+          sudo rm -rf /usr/share/dotnet &
+          sudo rm -rf /usr/local/lib/android &
+          sudo rm -rf /opt/ghc &
+          sudo rm -rf /opt/hostedtoolcache/CodeQL &
           
           make -j$(nproc --all) O=out gki_defconfig
           make -j$(nproc --all) O=out Image
+          
+          echo "内核编译完成！"
+          echo "编译后空间:"
+          df -h
 
       - name: Package & Boot-Ready Check
         id: pkg
