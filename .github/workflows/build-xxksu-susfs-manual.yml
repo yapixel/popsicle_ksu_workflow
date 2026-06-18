@@ -152,7 +152,7 @@ jobs:
           variant: "xxksu_manual"
           enable_susfs: "true"
 
-     - name: Compile Kernel
+      - name: Compile Kernel
         run: |
           WORKDIR="$(pwd)"
           export PATH="$WORKDIR/kernel_workspace/clang/bin:$PATH"
