@@ -58,6 +58,13 @@ jobs:
           
           sed -i 's/ -dirty//g' common/scripts/setlocalversion
 
+      - name: Fix Unicode
+        run: | 
+         cd kernel_workspace/common
+      
+         patch -p1 -l < "${{ github.workspace }}/.github/patches/gki/unicode_bypass_fix.patch"
+
+
       - name: Sync SuSFS Source
         run: |
           SUSFS_DIR="${{ github.workspace }}/susfs4ksu"
