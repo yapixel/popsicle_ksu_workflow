@@ -60,7 +60,8 @@ jobs:
           
           cd kernel_workspace/common
           sed -i '/endmenu/i source "drivers/nuke_ext4_lkm/Kconfig"' drivers/Kconfig
-          echo 'obj-y += drivers/nuke_ext4_lkm/' >> drivers/Makefile
+          # 关键修正：必须挂载为 obj-m 模块对象
+          echo 'obj-m += drivers/nuke_ext4_lkm/' >> drivers/Makefile
 
       - name: Compile nuke.ko Only
         run: |
@@ -101,10 +102,15 @@ jobs:
           
           make -j$(nproc --all) O=out gki_defconfig
           
+          # 注入临时模块标志，强迫构建树刷新依赖
+          echo "CONFIG_NUKE_EXT4_LKM=m" >> out/.config
+          make -j$(nproc --all) O=out olddefconfig
+          
           make -j$(nproc --all) O=out scripts
           make -j$(nproc --all) O=out prepare
           
-          make -j$(nproc --all) O=out drivers/nuke_ext4_lkm/
+          # 关键修正：使用 M= 机制锁定目录并调用全局 modules 目标，触发完整的链接和 modpost
+          make -j$(nproc --all) O=out M=drivers/nuke_ext4_lkm modules
           
           echo "模块编译完成！"
 
@@ -112,6 +118,7 @@ jobs:
         id: pkg
         run: |
           cd kernel_workspace
+          # 在 M= 树外构建模式下，编译结果会直接产出在源码树对应位置的 out/ 对应子目录下
           MODULE_KO=$(find ./common/out/drivers/nuke_ext4_lkm -name "nuke_ext4_lkm.ko" -o -name "nuke.ko" | head -n 1)
           if [ -f "$MODULE_KO" ]; then
             echo "Found compiled LKM: $MODULE_KO"
