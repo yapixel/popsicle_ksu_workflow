@@ -48,17 +48,11 @@ jobs:
           
           sed -i 's/ -dirty//g' common/scripts/setlocalversion
 
-      - name: Clone and Prepare nuke_ext4 LKM Source
+      - name: Clone nuke_ext4 LKM Source
         run: |
           git clone --depth=1 https://github.com/yapixel/mountify mountify_repo
-          mv mountify_repo/nuke_ext4_lkm kernel_workspace/common/drivers/nuke_ext4_lkm
-          rm -rf mountify_repo
-          
-          cd kernel_workspace/common
-          sed -i '/endmenu/i source "drivers/nuke_ext4_lkm/Kconfig"' drivers/Kconfig
-          echo 'obj-m += drivers/nuke_ext4_lkm/' >> drivers/Makefile
 
-      - name: Compile nuke.ko LKM Module Only
+      - name: Compile nuke.ko Only
         run: |
           WORKDIR="$(pwd)"
           export PATH="$WORKDIR/kernel_workspace/clang/bin:$PATH"
@@ -95,27 +89,22 @@ jobs:
           export KBUILD_BUILD_HOST="build-host"
           export KBUILD_BUILD_USER="kleaf"
           
-          # 1. 配置准备
           make -j$(nproc --all) O=out gki_defconfig
-          echo "CONFIG_NUKE_EXT4_LKM=m" >> out/.config
-          make -j$(nproc --all) O=out olddefconfig
-          
-          # 2. 关键优化：跳过整个内核镜像构建，直接编译并链接指定的模块目标
           make -j$(nproc --all) O=out modules_prepare
-          make -j$(nproc --all) O=out M=drivers/nuke_ext4_lkm modules
+          
+          make -j$(nproc --all) -C "$(pwd)" O=out M="$WORKDIR/mountify_repo/nuke_ext4_lkm" modules
           
           echo "模块编译完成！"
 
       - name: Collect and Verify Output
         id: pkg
         run: |
-          cd kernel_workspace
-          MODULE_KO=$(find ./common/out/drivers/nuke_ext4_lkm -name "nuke_ext4_lkm.ko" -o -name "nuke.ko" | head -n 1)
+          MODULE_KO="mountify_repo/nuke_ext4_lkm/nuke.ko"
           if [ -f "$MODULE_KO" ]; then
             echo "Found compiled LKM: $MODULE_KO"
-            cp "$MODULE_KO" ./nuke.ko
+            mkdir -p kernel_workspace && cp "$MODULE_KO" kernel_workspace/nuke.ko
           else
-            echo "Error: nuke LKM module binary missing!" && exit 1
+            echo "Error: nuke.ko binary missing!" && exit 1
           fi
 
       - name: Upload nuke.ko Artifact
