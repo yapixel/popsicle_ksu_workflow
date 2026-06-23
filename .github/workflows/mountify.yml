@@ -48,15 +48,19 @@ jobs:
 
       - name: Clone and Inject nuke_ext4 LKM Source
         run: |
-          # 1. 直接克隆到内核源码树的 drivers 目录下
           git clone --depth=1 https://github.com/yapixel/mountify mountify_repo
-          mv mountify_repo/nuke_ext4_lkm kernel_workspace/common/drivers/nuke_ext4_lkm
+          
+          TARGET_DIR=$(find mountify_repo -type f -name "Makefile" | grep "nuke_ext4_lkm" | head -n 1 | xargs dirname)
+          if [ -z "$TARGET_DIR" ]; then
+            echo "Error: Cannot find valid module directory with Makefile!" && exit 1
+          fi
+          
+          mv "$TARGET_DIR" kernel_workspace/common/drivers/nuke_ext4_lkm
           rm -rf mountify_repo
           
-          # 2. 挂载到主编译链中
           cd kernel_workspace/common
           sed -i '/endmenu/i source "drivers/nuke_ext4_lkm/Kconfig"' drivers/Kconfig
-          echo 'obj-m += drivers/nuke_ext4_lkm/' >> drivers/Makefile
+          echo 'obj-y += drivers/nuke_ext4_lkm/' >> drivers/Makefile
 
       - name: Compile nuke.ko Only
         run: |
@@ -95,13 +99,12 @@ jobs:
           export KBUILD_BUILD_HOST="build-host"
           export KBUILD_BUILD_USER="kleaf"
           
-          # 生成基准配置并注入模块编译开关
           make -j$(nproc --all) O=out gki_defconfig
-          echo "CONFIG_NUKE_EXT4_LKM=m" >> out/.config
-          make -j$(nproc --all) O=out olddefconfig
           
-          # 精准编译：通过指定外部模块目录参数，跳过核心镜像编译，但共用完整的符号导出流程
-          make -j$(nproc --all) O=out M=drivers/nuke_ext4_lkm modules
+          make -j$(nproc --all) O=out scripts
+          make -j$(nproc --all) O=out prepare
+          
+          make -j$(nproc --all) O=out drivers/nuke_ext4_lkm/
           
           echo "模块编译完成！"
 
