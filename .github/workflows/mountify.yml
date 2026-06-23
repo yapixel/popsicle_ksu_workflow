@@ -13,11 +13,9 @@ jobs:
   build:
     name: Build nuke.ko 6.12.${{ inputs.sub_level }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       ANDROID_VERSION: 'android16'
-    outputs:
-      build_date: ${{ steps.pkg.outputs.build_date }}
 
     steps:
       - name: Checkout Repository
@@ -48,9 +46,17 @@ jobs:
           
           sed -i 's/ -dirty//g' common/scripts/setlocalversion
 
-      - name: Clone nuke_ext4 LKM Source
+      - name: Clone and Inject nuke_ext4 LKM Source
         run: |
+          # 1. 直接克隆到内核源码树的 drivers 目录下
           git clone --depth=1 https://github.com/yapixel/mountify mountify_repo
+          mv mountify_repo/nuke_ext4_lkm kernel_workspace/common/drivers/nuke_ext4_lkm
+          rm -rf mountify_repo
+          
+          # 2. 挂载到主编译链中
+          cd kernel_workspace/common
+          sed -i '/endmenu/i source "drivers/nuke_ext4_lkm/Kconfig"' drivers/Kconfig
+          echo 'obj-m += drivers/nuke_ext4_lkm/' >> drivers/Makefile
 
       - name: Compile nuke.ko Only
         run: |
@@ -89,20 +95,24 @@ jobs:
           export KBUILD_BUILD_HOST="build-host"
           export KBUILD_BUILD_USER="kleaf"
           
+          # 生成基准配置并注入模块编译开关
           make -j$(nproc --all) O=out gki_defconfig
-          make -j$(nproc --all) O=out modules_prepare
+          echo "CONFIG_NUKE_EXT4_LKM=m" >> out/.config
+          make -j$(nproc --all) O=out olddefconfig
           
-          make -j$(nproc --all) -C "$(pwd)" O=out M="$WORKDIR/mountify_repo/nuke_ext4_lkm" modules
+          # 精准编译：通过指定外部模块目录参数，跳过核心镜像编译，但共用完整的符号导出流程
+          make -j$(nproc --all) O=out M=drivers/nuke_ext4_lkm modules
           
           echo "模块编译完成！"
 
       - name: Collect and Verify Output
         id: pkg
         run: |
-          MODULE_KO="mountify_repo/nuke_ext4_lkm/nuke.ko"
+          cd kernel_workspace
+          MODULE_KO=$(find ./common/out/drivers/nuke_ext4_lkm -name "nuke_ext4_lkm.ko" -o -name "nuke.ko" | head -n 1)
           if [ -f "$MODULE_KO" ]; then
             echo "Found compiled LKM: $MODULE_KO"
-            mkdir -p kernel_workspace && cp "$MODULE_KO" kernel_workspace/nuke.ko
+            cp "$MODULE_KO" ./nuke.ko
           else
             echo "Error: nuke.ko binary missing!" && exit 1
           fi
