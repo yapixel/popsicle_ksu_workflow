@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       sub_level:
-        description: 'Kernel sub level (e.g. 23)'
+        description: 'Kernel sub level, e.g. 23'
         required: true
         type: string
         default: '23'
@@ -15,75 +15,140 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      ANDROID_VERSION: 'android16'
+      ANDROID_VERSION: android16
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
-      - name: Free Disk Space & Install Dependencies
+      - name: Free Disk Space and Install Dependencies
         run: |
+          set -euxo pipefail
+
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
           sudo docker image prune -af 2>/dev/null || true
+
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            binutils python-is-python3 libssl-dev libelf-dev libdw-dev \
-            curl bison flex make git perl gcc bc zip unzip aria2 \
-            m4
+            binutils \
+            python-is-python3 \
+            libssl-dev \
+            libelf-dev \
+            libdw-dev \
+            curl \
+            bison \
+            flex \
+            make \
+            git \
+            perl \
+            gcc \
+            bc \
+            zip \
+            unzip \
+            aria2 \
+            m4 \
+            rsync \
+            dwarves
 
-      - name: Initialize Workspace & Toolchains
+      - name: Initialize Workspace and Toolchains
         run: |
-          mkdir -p kernel_workspace && cd kernel_workspace 
-          
-          aria2c -s16 -x16 -k1M "https://github.com/yapixel/gki-build-assets/releases/download/android16-6.12-2025-06_r58/common-android16-6.12-2025-06_r58.tar.gz" -o common.tar.gz
-          mkdir -p common && tar -xzf common.tar.gz -C common && rm common.tar.gz
-          
-          aria2c -s16 -x16 -k1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-r536225.tar.gz" -o clang.tar.gz
-          mkdir -p clang && tar -xzf clang.tar.gz -C clang && rm clang.tar.gz
-          
-          aria2c -s16 -x16 -k1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/build-tools.tar.gz" -o build-tools.tar.gz
-          mkdir -p build-tools && tar -xzf build-tools.tar.gz -C build-tools && rm build-tools.tar.gz
-          
-          sed -i 's/ -dirty//g' common/scripts/setlocalversion
+          set -euxo pipefail
+
+          mkdir -p kernel_workspace
+          cd kernel_workspace
+
+          aria2c -s16 -x16 -k1M \
+            "https://github.com/yapixel/gki-build-assets/releases/download/android16-6.12-2025-06_r58/common-android16-6.12-2025-06_r58.tar.gz" \
+            -o common.tar.gz
+
+          mkdir -p common
+          tar -xzf common.tar.gz -C common
+          rm -f common.tar.gz
+
+          aria2c -s16 -x16 -k1M \
+            "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-r536225.tar.gz" \
+            -o clang.tar.gz
+
+          mkdir -p clang
+          tar -xzf clang.tar.gz -C clang
+          rm -f clang.tar.gz
+
+          aria2c -s16 -x16 -k1M \
+            "https://github.com/yapixel/gki-build-assets/releases/download/r536225/build-tools.tar.gz" \
+            -o build-tools.tar.gz
+
+          mkdir -p build-tools
+          tar -xzf build-tools.tar.gz -C build-tools
+          rm -f build-tools.tar.gz
+
+          sed -i 's/ -dirty//g' common/scripts/setlocalversion || true
 
       - name: Clone and Inject nuke_ext4 LKM Source
         run: |
+          set -euxo pipefail
+
           git clone --depth=1 https://github.com/yapixel/mountify mountify_repo
-          
-          TARGET_DIR=$(find mountify_repo -type f -name "Makefile" | grep "nuke_ext4_lkm" | head -n 1 | xargs dirname)
+
+          TARGET_DIR="$(find mountify_repo -type f -name "Makefile" | grep "nuke_ext4_lkm" | head -n 1 | xargs dirname || true)"
+
           if [ -z "$TARGET_DIR" ]; then
-            echo "Error: Cannot find valid module directory with Makefile!" && exit 1
+            echo "Error: Cannot find valid nuke_ext4_lkm module directory with Makefile!"
+            find mountify_repo -maxdepth 5 -type f -name "Makefile" -print
+            exit 1
           fi
-          
+
+          echo "Found module source: $TARGET_DIR"
+
+          rm -rf kernel_workspace/common/drivers/nuke_ext4_lkm
           mv "$TARGET_DIR" kernel_workspace/common/drivers/nuke_ext4_lkm
           rm -rf mountify_repo
-          
+
           cd kernel_workspace/common
-          sed -i '/endmenu/i source "drivers/nuke_ext4_lkm/Kconfig"' drivers/Kconfig
-          # 关键修正：必须挂载为 obj-m 模块对象
-          echo 'obj-m += drivers/nuke_ext4_lkm/' >> drivers/Makefile
+
+          if [ ! -f drivers/nuke_ext4_lkm/Kconfig ]; then
+            cat > drivers/nuke_ext4_lkm/Kconfig << 'EOF'
+          config NUKE_EXT4_LKM
+              tristate "nuke ext4 lkm"
+              default m
+          EOF
+          fi
+
+          if ! grep -q 'drivers/nuke_ext4_lkm/Kconfig' drivers/Kconfig; then
+            sed -i '/endmenu/i source "drivers/nuke_ext4_lkm/Kconfig"' drivers/Kconfig
+          fi
+
+          if ! grep -q 'drivers/nuke_ext4_lkm' drivers/Makefile; then
+            echo 'obj-m += nuke_ext4_lkm/' >> drivers/Makefile
+          fi
+
+          echo "Injected nuke_ext4_lkm successfully"
+          ls -la drivers/nuke_ext4_lkm
 
       - name: Compile nuke.ko Only
         run: |
+          set -euxo pipefail
+
           WORKDIR="$(pwd)"
+
           export PATH="$WORKDIR/kernel_workspace/clang/bin:$PATH"
           export PATH="$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
-          
+
           cd kernel_workspace/common
-          
-          COMMON_REAL_PATH=$(pwd -P)
-          ROOT_REAL_PATH=$(dirname "$COMMON_REAL_PATH")
-          KCFLAGS=" -fdebug-prefix-map=$ROOT_REAL_PATH=."
-          KCFLAGS+=" -fmacro-prefix-map=$ROOT_REAL_PATH=."
-          KCFLAGS+=" -ffile-prefix-map=$ROOT_REAL_PATH=."
-          KCFLAGS+=" -no-canonical-prefixes -O2 -pipe -Wno-error -fno-stack-protector -D__ANDROID_COMMON_KERNEL__"
-          export KCFLAGS
-          
+
+          COMMON_REAL_PATH="$(pwd -P)"
+          ROOT_REAL_PATH="$(dirname "$COMMON_REAL_PATH")"
+
+          export KCFLAGS=" -fdebug-prefix-map=$ROOT_REAL_PATH=."
+          export KCFLAGS="$KCFLAGS -fmacro-prefix-map=$ROOT_REAL_PATH=."
+          export KCFLAGS="$KCFLAGS -ffile-prefix-map=$ROOT_REAL_PATH=."
+          export KCFLAGS="$KCFLAGS -no-canonical-prefixes -O2 -pipe -Wno-error -fno-stack-protector -D__ANDROID_COMMON_KERNEL__"
+
           export LLVM=1
           export LLVM_IAS=1
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+
           export HOSTCC=clang
           export HOSTLD=ld.lld
           export CC=clang
@@ -94,38 +159,51 @@ jobs:
           export OBJDUMP=llvm-objdump
           export READELF=llvm-readelf
           export STRIP=llvm-strip
-          
+
           export SOURCE_DATE_EPOCH=1757653061
           export KBUILD_BUILD_TIMESTAMP="Fri Sep 12 04:57:41 UTC 2025"
           export KBUILD_BUILD_HOST="build-host"
           export KBUILD_BUILD_USER="kleaf"
-          
-          make -j$(nproc --all) O=out gki_defconfig
-          
-          # 注入临时模块标志，强迫构建树刷新依赖
+
+          make -j"$(nproc --all)" O=out gki_defconfig
+
           echo "CONFIG_NUKE_EXT4_LKM=m" >> out/.config
-          make -j$(nproc --all) O=out olddefconfig
-          
-          make -j$(nproc --all) O=out scripts
-          make -j$(nproc --all) O=out prepare
-          
-          # 关键修正：使用 M= 机制锁定目录并调用全局 modules 目标，触发完整的链接和 modpost
-          make -j$(nproc --all) O=out M=drivers/nuke_ext4_lkm modules
-          
-          echo "模块编译完成！"
+          make -j"$(nproc --all)" O=out olddefconfig
+
+          make -j"$(nproc --all)" O=out modules_prepare
+
+          make -j"$(nproc --all)" \
+            O=out \
+            M="$COMMON_REAL_PATH/drivers/nuke_ext4_lkm" \
+            KBUILD_MODPOST_WARN=1 \
+            modules
+
+          echo "Module build finished"
 
       - name: Collect and Verify Output
         id: pkg
         run: |
+          set -euxo pipefail
+
           cd kernel_workspace
-          # 在 M= 树外构建模式下，编译结果会直接产出在源码树对应位置的 out/ 对应子目录下
-          MODULE_KO=$(find ./common/out/drivers/nuke_ext4_lkm -name "nuke_ext4_lkm.ko" -o -name "nuke.ko" | head -n 1)
-          if [ -f "$MODULE_KO" ]; then
-            echo "Found compiled LKM: $MODULE_KO"
-            cp "$MODULE_KO" ./nuke.ko
-          else
-            echo "Error: nuke.ko binary missing!" && exit 1
+
+          echo "Searching for compiled ko files..."
+          find ./common -type f -name "*.ko" -print || true
+
+          MODULE_KO="$(find ./common -type f \( -name "nuke_ext4_lkm.ko" -o -name "nuke.ko" \) | head -n 1 || true)"
+
+          if [ -z "$MODULE_KO" ] || [ ! -f "$MODULE_KO" ]; then
+            echo "Error: nuke.ko binary missing!"
+            echo "All ko files:"
+            find ./common -type f -name "*.ko" -print || true
+            exit 1
           fi
+
+          echo "Found compiled LKM: $MODULE_KO"
+          cp -f "$MODULE_KO" ./nuke.ko
+
+          file ./nuke.ko || true
+          ls -lh ./nuke.ko
 
       - name: Upload nuke.ko Artifact
         uses: actions/upload-artifact@v7.0.1
