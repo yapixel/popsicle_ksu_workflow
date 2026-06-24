@@ -13,7 +13,7 @@ jobs:
   build:
     name: Build nuke.ko 6.12.${{ inputs.sub_level }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       ANDROID_VERSION: android16
 
@@ -173,16 +173,29 @@ jobs:
           echo "===== Kernel module related config ====="
           grep -E '^CONFIG_MODULES=|^CONFIG_MODVERSIONS=|^CONFIG_MODULE_SIG=|^CONFIG_CFI|^CONFIG_LTO|^CONFIG_KALLSYMS|^CONFIG_KPROBES' out/.config || true
 
+          echo "===== Prepare kernel build tree ====="
           make -j"$(nproc --all)" O=out modules_prepare
 
+          echo "===== Build base kernel objects to generate Module.symvers ====="
+          make -j"$(nproc --all)" O=out Image modules
+
+          echo "===== Check Module.symvers ====="
           if grep -q '^CONFIG_MODVERSIONS=y' out/.config; then
             if [ ! -s out/Module.symvers ]; then
-              echo "Error: CONFIG_MODVERSIONS=y but out/Module.symvers is missing or empty."
+              echo "Error: CONFIG_MODVERSIONS=y but out/Module.symvers is still missing or empty after full kernel build."
+              echo "This means the source package does not provide enough symbol/version information."
               echo "Refusing to build/upload nuke.ko because symbol CRC may be unsafe."
               exit 1
             fi
+
+            echo "Module.symvers generated successfully:"
+            ls -lh out/Module.symvers
+            head -n 5 out/Module.symvers || true
+          else
+            echo "CONFIG_MODVERSIONS is not enabled."
           fi
 
+          echo "===== Build nuke_ext4_lkm with valid Module.symvers ====="
           make -j"$(nproc --all)" \
             O=out \
             M="$COMMON_REAL_PATH/drivers/nuke_ext4_lkm" \
@@ -253,6 +266,15 @@ jobs:
             echo "===== Important ELF sections ====="
             readelf -S ./nuke.ko | grep -E '\.modinfo|\.text|\.init|\.exit|__versions' || true
             echo
+
+            echo "===== Module.symvers status ====="
+            if [ -f ./common/out/Module.symvers ]; then
+              ls -lh ./common/out/Module.symvers || true
+              head -n 10 ./common/out/Module.symvers || true
+            else
+              echo "Module.symvers not found."
+            fi
+            echo
           } > ./nuke-module-info.txt
 
           cat ./nuke-module-info.txt
@@ -270,3 +292,4 @@ jobs:
           path: |
             kernel_workspace/nuke.ko
             kernel_workspace/nuke-module-info.txt
+``
