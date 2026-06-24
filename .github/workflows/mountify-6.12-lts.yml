@@ -1,0 +1,580 @@
+name: Build xxKSU + SUSFS + nuke.ko 6.12-lts
+
+on:
+  workflow_dispatch:
+    inputs:
+      sub_level:
+        description: 'Kernel sub level (e.g. 23)'
+        required: true
+        type: string
+        default: '23'
+
+jobs:
+  build:
+    name: KSU 6.12.${{ inputs.sub_level }} + nuke.ko
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      ANDROID_VERSION: 'android16'
+      KSU_BRANCH: 'master'
+      SCRIPTS_REPO: 'https://github.com/TheSillyOk/sh'
+
+    outputs:
+      build_date: ${{ steps.pkg.outputs.build_date }}
+      clang_ver: ${{ steps.set-outputs.outputs.clang_ver }}
+      kernel_version: ${{ steps.meta.outputs.kernel_version }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Free Disk Space and Install Dependencies
+        run: |
+          set -euxo pipefail
+
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune -af 2>/dev/null || true
+
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            binutils \
+            python-is-python3 \
+            libssl-dev \
+            libelf-dev \
+            libdw-dev \
+            curl \
+            bison \
+            flex \
+            make \
+            git \
+            perl \
+            gcc \
+            bc \
+            zip \
+            unzip \
+            aria2 \
+            m4 \
+            rsync \
+            dwarves \
+            kmod
+
+      - name: Initialize Workspace and Toolchains
+        run: |
+          set -euxo pipefail
+
+          mkdir -p kernel_workspace
+          cd kernel_workspace
+
+          aria2c -s16 -x16 -k1M \
+            "https://android.googlesource.com/kernel/common/+archive/refs/heads/android16-6.12-lts.tar.gz" \
+            -o common.tar.gz
+
+          mkdir -p common
+          tar -xzf common.tar.gz -C common
+          rm -f common.tar.gz
+
+          aria2c -s16 -x16 -k1M \
+            "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-r536225.tar.gz" \
+            -o clang.tar.gz
+
+          mkdir -p clang
+          tar -xzf clang.tar.gz -C clang
+          rm -f clang.tar.gz
+
+          aria2c -s16 -x16 -k1M \
+            "https://github.com/yapixel/gki-build-assets/releases/download/r536225/rust-1.82.0.tar.gz" \
+            -o rust.tar.gz
+
+          mkdir -p rust
+          tar -xzf rust.tar.gz -C rust
+          rm -f rust.tar.gz
+
+          aria2c -s16 -x16 -k1M \
+            "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-tools-r536225.tar.gz" \
+            -o clang-tools.tar.gz
+
+          mkdir -p clang-tools
+          tar -xzf clang-tools.tar.gz -C clang-tools
+          rm -f clang-tools.tar.gz
+
+          aria2c -s16 -x16 -k1M \
+            "https://github.com/yapixel/gki-build-assets/releases/download/r536225/build-tools.tar.gz" \
+            -o build-tools.tar.gz
+
+          mkdir -p build-tools
+          tar -xzf build-tools.tar.gz -C build-tools
+          rm -f build-tools.tar.gz
+
+          sed -i 's/ -dirty//g' common/scripts/setlocalversion || true
+
+      - name: Fix Unicode
+        run: |
+          set -euxo pipefail
+
+          cd kernel_workspace/common
+          patch -p1 -l < "${{ github.workspace }}/.github/patches/gki/unicode_bypass_fix.patch"
+
+      - name: Sync SuSFS Source
+        run: |
+          set -euxo pipefail
+
+          SUSFS_DIR="${{ github.workspace }}/susfs4ksu"
+          git clone --depth=1 --branch=gki-android16-6.12 https://gitlab.com/simonpunk/susfs4ksu "$SUSFS_DIR"
+          echo "SUSFS_DIR=$SUSFS_DIR" >> "$GITHUB_ENV"
+
+      - name: Setup xxKSU
+        run: |
+          set -euxo pipefail
+
+          cd kernel_workspace/common
+
+          git clone --depth=1 --branch=${{ env.KSU_BRANCH }} https://github.com/backslashxx/KernelSU KernelSU
+
+          ln -sf ../KernelSU/kernel drivers/kernelsu
+
+          grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
+          grep -q "kernelsu" drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+
+          cp -r KernelSU/uapi KernelSU/kernel/uapi 2>/dev/null || true
+
+          echo 'ccflags-y += -I$(srctree)/drivers/kernelsu' >> drivers/kernelsu/Makefile
+
+          mkdir -p include/uapi
+
+          cp -f KernelSU/kernel/policy/*.h include/uapi/ 2>/dev/null || true
+          cp -f KernelSU/kernel/policy/*.h include/ 2>/dev/null || true
+          cp -f KernelSU/kernel/include/*.h include/ 2>/dev/null || true
+          cp -f KernelSU/kernel/uapi/*.h include/uapi/ 2>/dev/null || true
+
+      - name: Clone Scripts Repository
+        run: |
+          set -euxo pipefail
+
+          git clone --depth=1 "${{ env.SCRIPTS_REPO }}" sh
+
+      - name: Metadata Extraction
+        id: meta
+        run: |
+          set -euxo pipefail
+
+          chmod +x ./sh/get_ksuver.sh 2>/dev/null || true
+
+          K_VER=$(./sh/get_ksuver.sh "backslashxx" "KernelSU" "${{ env.KSU_BRANCH }}" || echo "unknown")
+          echo "ksu_ver=$K_VER" >> "$GITHUB_OUTPUT"
+
+          echo "Extracting kernel version from source..."
+
+          cd kernel_workspace/common
+
+          KERNEL_V=$(grep -E '^VERSION =' Makefile | awk '{print $3}' | tr -d '\r')
+          KERNEL_P=$(grep -E '^PATCHLEVEL =' Makefile | awk '{print $3}' | tr -d '\r')
+          KERNEL_S=$(grep -E '^SUBLEVEL =' Makefile | awk '{print $3}' | tr -d '\r')
+
+          if [ -z "$KERNEL_V" ] || [ -z "$KERNEL_P" ]; then
+            echo "Error: Failed to extract kernel version from Makefile"
+            grep -E '^(VERSION|PATCHLEVEL|SUBLEVEL) =' Makefile || true
+            exit 1
+          fi
+
+          KERNEL_S=${KERNEL_S:-0}
+
+          KERNEL_VERSION_FULL="${KERNEL_V}.${KERNEL_P}"
+          KERNEL_VERSION_FULL_WITH_SUB="${KERNEL_V}.${KERNEL_P}.${KERNEL_S}"
+
+          echo "KERNEL_VERSION=${KERNEL_VERSION_FULL}" >> "$GITHUB_ENV"
+          echo "KERNEL_VERSION_FULL=${KERNEL_VERSION_FULL_WITH_SUB}" >> "$GITHUB_ENV"
+
+          echo "kernel_version=${KERNEL_VERSION_FULL}" >> "$GITHUB_OUTPUT"
+          echo "kernel_version_full=${KERNEL_VERSION_FULL_WITH_SUB}" >> "$GITHUB_OUTPUT"
+
+          SUSFS_PATH="${{ env.SUSFS_DIR }}/kernel_patches/include/linux/susfs.h"
+          SUSFS_VER="unknown"
+
+          if [ -f "$SUSFS_PATH" ]; then
+            SUSFS_VER=$(grep -E '#define SUSFS_VERSION' "$SUSFS_PATH" | awk -F '"' '{print $2}')
+          fi
+
+          echo "susfs_ver=$SUSFS_VER" >> "$GITHUB_OUTPUT"
+
+          echo "▶ KernelSU Version : $K_VER"
+          echo "▶ Detected kernel version: ${KERNEL_VERSION_FULL_WITH_SUB}"
+          echo "▶ SuSFS Version    : $SUSFS_VER"
+
+      - name: Apply Patches KSU + SuSFS
+        run: |
+          set -euxo pipefail
+
+          cd kernel_workspace/common
+
+          cp "${{ env.SUSFS_DIR }}/kernel_patches/fs/susfs.c" fs/
+          cp "${{ env.SUSFS_DIR }}/kernel_patches/include/linux/susfs.h" include/linux/
+          cp "${{ env.SUSFS_DIR }}/kernel_patches/include/linux/susfs_def.h" include/linux/
+
+          patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/51_deinlined_susfs_hooks_gki-android16-6.12.patch"
+
+          cd KernelSU
+          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/11_enable_susfs_for_ksu.patch"
+
+      - name: Inject Defconfig Flags
+        uses: ./.github/actions/kernel-config
+        with:
+          defconfig_path: "kernel_workspace/common/arch/arm64/configs/gki_defconfig"
+          build_config_path: "kernel_workspace/common/build.config.gki"
+          variant: "xxksu"
+          enable_susfs: "true"
+
+      - name: Compile Kernel Image and Generate Module.symvers
+        run: |
+          set -euxo pipefail
+
+          WORKDIR="$(pwd)"
+
+          export PATH="$WORKDIR/kernel_workspace/clang/bin:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/clang-tools:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/rust/bin:$PATH"
+
+          CLANG_VER="$(clang --version | head -1)"
+          echo "CLANG_VER=$CLANG_VER" >> "$GITHUB_ENV"
+
+          echo "Clang version: $CLANG_VER"
+          echo "Rustc version: $(rustc -V 2>/dev/null | head -1 || true)"
+          echo "Bindgen version: $(bindgen --version 2>/dev/null | head -1 || true)"
+          echo "pahole version: $(pahole --version 2>/dev/null | head -1 || echo 'not installed')"
+
+          cd kernel_workspace/common
+
+          COMMON_REAL_PATH="$(pwd -P)"
+          ROOT_REAL_PATH="$(dirname "$COMMON_REAL_PATH")"
+
+          export KCFLAGS=" -fdebug-prefix-map=$ROOT_REAL_PATH=."
+          export KCFLAGS="$KCFLAGS -fmacro-prefix-map=$ROOT_REAL_PATH=."
+          export KCFLAGS="$KCFLAGS -ffile-prefix-map=$ROOT_REAL_PATH=."
+          export KCFLAGS="$KCFLAGS -no-canonical-prefixes -O2 -pipe -Wno-error -fno-stack-protector -D__ANDROID_COMMON_KERNEL__"
+
+          export LLVM=1
+          export LLVM_IAS=1
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+
+          export HOSTCC=clang
+          export HOSTLD=ld.lld
+          export CC=clang
+          export LD=ld.lld
+          export AR=llvm-ar
+          export NM=llvm-nm
+          export OBJCOPY=llvm-objcopy
+          export OBJDUMP=llvm-objdump
+          export READELF=llvm-readelf
+          export STRIP=llvm-strip
+
+          if [ -f "${{ github.workspace }}/_setup_env.sh" ]; then
+            cp "${{ github.workspace }}/_setup_env.sh" ./_setup_env.sh
+            chmod +x ./_setup_env.sh || true
+
+            sed -E 's/^([[:space:]]*)exit([[:space:]]|$)/\1return\2/g' ./_setup_env.sh > ./_setup_env.safe.sh
+            chmod +x ./_setup_env.safe.sh || true
+
+            set +e
+            set +u
+            source ./_setup_env.safe.sh
+            SETUP_ENV_RC=$?
+            set -u
+            set -e
+
+            if [ "$SETUP_ENV_RC" -ne 0 ]; then
+              echo "::warning::_setup_env.sh returned non-zero exit code: $SETUP_ENV_RC, continuing anyway"
+            fi
+          else
+            echo "_setup_env.sh not found, skipping"
+          fi
+
+          export SOURCE_DATE_EPOCH=1757653061
+          export KBUILD_BUILD_TIMESTAMP="Fri Sep 12 04:57:41 UTC 2025"
+          export KBUILD_BUILD_HOST="build-host"
+          export KBUILD_BUILD_USER="kleaf"
+
+          sudo rm -rf /usr/share/dotnet &
+          sudo rm -rf /usr/local/lib/android &
+          sudo rm -rf /opt/ghc &
+          sudo rm -rf /opt/hostedtoolcache/CodeQL &
+          wait || true
+
+          make -j"$(nproc --all)" O=out gki_defconfig
+
+          echo "===== Kernel release before build ====="
+          make -s O=out kernelrelease || true
+
+          echo "===== Kernel module related config ====="
+          grep -E '^CONFIG_MODULES=|^CONFIG_MODVERSIONS=|^CONFIG_MODULE_SIG=|^CONFIG_CFI|^CONFIG_LTO|^CONFIG_KALLSYMS|^CONFIG_KPROBES' out/.config || true
+
+          echo "===== Build Image and modules to generate Module.symvers ====="
+          make -j"$(nproc --all)" O=out Image modules
+
+          echo "===== Kernel release after build ====="
+          make -s O=out kernelrelease || true
+
+          echo "===== Module.symvers status ====="
+          if [ -f out/Module.symvers ]; then
+            ls -lh out/Module.symvers
+            head -n 5 out/Module.symvers || true
+          else
+            echo "Module.symvers not found."
+          fi
+
+          if grep -q '^CONFIG_MODVERSIONS=y' out/.config; then
+            if [ ! -s out/Module.symvers ]; then
+              echo "Error: CONFIG_MODVERSIONS=y but out/Module.symvers is missing or empty."
+              echo "Refusing to continue because external modules may fail with Exec format error or symbol CRC mismatch."
+              exit 1
+            fi
+          fi
+
+          echo "内核编译完成！"
+          echo "编译后空间:"
+          df -h
+
+      - name: Clone and Inject nuke_ext4 LKM Source
+        run: |
+          set -euxo pipefail
+
+          git clone --depth=1 https://github.com/yapixel/mountify mountify_repo
+
+          TARGET_DIR="$(find mountify_repo -type f -name "Makefile" | grep "nuke_ext4_lkm" | head -n 1 | xargs dirname || true)"
+
+          if [ -z "$TARGET_DIR" ]; then
+            echo "Error: Cannot find valid nuke_ext4_lkm module directory with Makefile!"
+            find mountify_repo -maxdepth 6 -type f -name "Makefile" -print || true
+            exit 1
+          fi
+
+          echo "Found nuke_ext4_lkm source: $TARGET_DIR"
+
+          rm -rf kernel_workspace/common/drivers/nuke_ext4_lkm
+          mv "$TARGET_DIR" kernel_workspace/common/drivers/nuke_ext4_lkm
+          rm -rf mountify_repo
+
+          cd kernel_workspace/common
+
+          if [ ! -f drivers/nuke_ext4_lkm/Kconfig ]; then
+            cat > drivers/nuke_ext4_lkm/Kconfig << 'EOF'
+          config NUKE_EXT4_LKM
+              tristate "nuke ext4 lkm"
+              default m
+          EOF
+          fi
+
+          if ! grep -q 'drivers/nuke_ext4_lkm/Kconfig' drivers/Kconfig; then
+            sed -i '/endmenu/i source "drivers/nuke_ext4_lkm/Kconfig"' drivers/Kconfig
+          fi
+
+          if ! grep -q 'nuke_ext4_lkm' drivers/Makefile; then
+            echo 'obj-m += nuke_ext4_lkm/' >> drivers/Makefile
+          fi
+
+          echo "nuke_ext4_lkm injected successfully"
+          ls -la drivers/nuke_ext4_lkm
+
+      - name: Compile nuke.ko With Same Kernel Tree
+        run: |
+          set -euxo pipefail
+
+          WORKDIR="$(pwd)"
+
+          export PATH="$WORKDIR/kernel_workspace/clang/bin:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/clang-tools:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/rust/bin:$PATH"
+
+          cd kernel_workspace/common
+
+          COMMON_REAL_PATH="$(pwd -P)"
+          ROOT_REAL_PATH="$(dirname "$COMMON_REAL_PATH")"
+
+          export KCFLAGS=" -fdebug-prefix-map=$ROOT_REAL_PATH=."
+          export KCFLAGS="$KCFLAGS -fmacro-prefix-map=$ROOT_REAL_PATH=."
+          export KCFLAGS="$KCFLAGS -ffile-prefix-map=$ROOT_REAL_PATH=."
+          export KCFLAGS="$KCFLAGS -no-canonical-prefixes -O2 -pipe -Wno-error -fno-stack-protector -D__ANDROID_COMMON_KERNEL__"
+
+          export LLVM=1
+          export LLVM_IAS=1
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+
+          export HOSTCC=clang
+          export HOSTLD=ld.lld
+          export CC=clang
+          export LD=ld.lld
+          export AR=llvm-ar
+          export NM=llvm-nm
+          export OBJCOPY=llvm-objcopy
+          export OBJDUMP=llvm-objdump
+          export READELF=llvm-readelf
+          export STRIP=llvm-strip
+
+          export SOURCE_DATE_EPOCH=1757653061
+          export KBUILD_BUILD_TIMESTAMP="Fri Sep 12 04:57:41 UTC 2025"
+          export KBUILD_BUILD_HOST="build-host"
+          export KBUILD_BUILD_USER="kleaf"
+
+          echo "===== Kernel release used for nuke.ko ====="
+          make -s O=out kernelrelease || true
+
+          echo "===== Check Module.symvers ====="
+          if grep -q '^CONFIG_MODVERSIONS=y' out/.config; then
+            if [ ! -s out/Module.symvers ]; then
+              echo "Error: CONFIG_MODVERSIONS=y but out/Module.symvers is missing or empty."
+              echo "nuke.ko must be built with the same Module.symvers as the flashed xxKSU + SuSFS kernel."
+              exit 1
+            fi
+
+            ls -lh out/Module.symvers
+            head -n 5 out/Module.symvers || true
+          fi
+
+          if ! grep -q '^CONFIG_NUKE_EXT4_LKM=m' out/.config; then
+            echo "CONFIG_NUKE_EXT4_LKM=m" >> out/.config
+          fi
+
+          make -j"$(nproc --all)" O=out olddefconfig
+
+          echo "===== Build nuke_ext4_lkm ====="
+          make -j"$(nproc --all)" \
+            O=out \
+            M="$COMMON_REAL_PATH/drivers/nuke_ext4_lkm" \
+            modules
+
+          echo "nuke.ko build finished"
+
+      - name: Collect and Inspect nuke.ko
+        run: |
+          set -euxo pipefail
+
+          cd kernel_workspace
+
+          echo "Searching for nuke ko..."
+          find ./common -type f -name "*.ko" -print || true
+
+          MODULE_KO="$(find ./common -type f \( -name "nuke_ext4_lkm.ko" -o -name "nuke.ko" \) | head -n 1 || true)"
+
+          if [ -z "$MODULE_KO" ] || [ ! -f "$MODULE_KO" ]; then
+            echo "Error: nuke.ko binary missing!"
+            exit 1
+          fi
+
+          cp -f "$MODULE_KO" ./nuke.ko
+
+          {
+            echo "===== kernelrelease ====="
+            cd common
+            make -s O=out kernelrelease || true
+            cd ..
+            echo
+
+            echo "===== nuke.ko file ====="
+            file ./nuke.ko || true
+            echo
+
+            echo "===== nuke.ko modinfo ====="
+            modinfo ./nuke.ko || true
+            echo
+
+            echo "===== nuke.ko vermagic ====="
+            modinfo ./nuke.ko | grep -i '^vermagic' || true
+            echo
+
+            echo "===== nuke.ko depends ====="
+            modinfo ./nuke.ko | grep -i '^depends' || true
+            echo
+
+            echo "===== undefined symbols ====="
+            nm -u ./nuke.ko || true
+            echo
+
+            echo "===== dangerous symbol scan ====="
+            nm -u ./nuke.ko | grep -E 'kallsyms_lookup_name|set_memory_rw|set_memory_ro|set_memory_x|set_memory_nx|text_poke|stop_machine|register_kprobe|unregister_kprobe|kprobe|ftrace|kallsyms|sprint_symbol|lookup_symbol_name' || true
+            echo
+
+            echo "===== ELF header ====="
+            readelf -h ./nuke.ko || true
+            echo
+
+            echo "===== important ELF sections ====="
+            readelf -S ./nuke.ko | grep -E '\.modinfo|\.text|\.init|\.exit|__versions' || true
+            echo
+
+            echo "===== Module.symvers ====="
+            ls -lh ./common/out/Module.symvers || true
+            head -n 10 ./common/out/Module.symvers || true
+            echo
+          } > ./nuke-module-info.txt
+
+          cat ./nuke-module-info.txt
+
+          echo "===== Strict dangerous symbol warning ====="
+          if nm -u ./nuke.ko | grep -E 'kallsyms_lookup_name|set_memory_rw|set_memory_ro|set_memory_x|set_memory_nx|text_poke|stop_machine|register_kprobe|unregister_kprobe|kprobe|ftrace|kallsyms|sprint_symbol|lookup_symbol_name'; then
+            echo "::warning::nuke.ko references dangerous hook/patch/symbol-lookup related symbols."
+            echo "::warning::This may still bootloop if module_init patches kernel/ext4 incorrectly."
+          fi
+
+          ls -lh ./nuke.ko ./nuke-module-info.txt
+
+      - name: Package and Boot-Ready Check
+        id: pkg
+        run: |
+          set -euxo pipefail
+
+          cd kernel_workspace
+
+          IMAGE="./common/out/arch/arm64/boot/Image"
+
+          if [ ! -f "$IMAGE" ]; then
+            echo "Image binary missing!"
+            exit 1
+          fi
+
+          git clone https://github.com/yapixel/AnyKernel3 --depth=1
+
+          cp "$IMAGE" ./AnyKernel3/
+          cd AnyKernel3
+
+          echo "Kernel Version: ${{ steps.meta.outputs.kernel_version_full }}" > build_info.txt
+          echo "KernelSU Version: ${{ steps.meta.outputs.ksu_ver }}" >> build_info.txt
+          echo "SuSFS Version: ${{ steps.meta.outputs.susfs_ver }}" >> build_info.txt
+          echo "Build Date: $(date)" >> build_info.txt
+
+          BUILD_DATE="$(date +'%y%m%d')"
+          echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
+
+          ZIP_NAME="xxksu_${{ steps.meta.outputs.ksu_ver }}_${{ steps.meta.outputs.kernel_version }}.${{ inputs.sub_level }}-${BUILD_DATE}-SuSFS_${{ steps.meta.outputs.susfs_ver }}.zip"
+
+          zip -r9 "../$ZIP_NAME" *
+
+          echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
+
+      - name: Collect Workflow Step Outputs
+        id: set-outputs
+        run: |
+          echo "clang_ver=${{ env.CLANG_VER }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: kernel-kowsu-susfs-nuke
+          path: |
+            kernel_workspace/${{ env.ZIP_NAME }}
+            kernel_workspace/nuke.ko
+            kernel_workspace/nuke-module-info.txt
+
+  publish-release:
+    needs: build
+    uses: ./.github/workflows/release.yml
+    with:
+      ksu_variant: 'xxksu'
+      sub_level: ${{ inputs.sub_level || '23' }}
+      kernel_ver: ${{ needs.build.outputs.kernel_version }}
+      build_date: ${{ needs.build.outputs.build_date }}
+      clang_ver: ${{ needs.build.outputs.clang_ver }}
+    secrets: inherit
