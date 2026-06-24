@@ -292,4 +292,3 @@ jobs:
           path: |
             kernel_workspace/nuke.ko
             kernel_workspace/nuke-module-info.txt
-``
