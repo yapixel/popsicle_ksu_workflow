@@ -53,7 +53,7 @@ jobs:
           mkdir -p kernel_workspace
           cd kernel_workspace
 
-          aria2c -s16 -x16 -k1M \
+          wget \
             "https://android.googlesource.com/kernel/common/+archive/refs/heads/android16-6.12-lts.tar.gz" \
             -o common.tar.gz
 
