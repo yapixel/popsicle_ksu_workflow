@@ -578,4 +578,3 @@ jobs:
       build_date: ${{ needs.build.outputs.build_date }}
       clang_ver: ${{ needs.build.outputs.clang_ver }}
     secrets: inherit
-``
