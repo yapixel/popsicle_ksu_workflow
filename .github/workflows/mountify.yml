@@ -269,9 +269,26 @@ jobs:
           export READELF=llvm-readelf
           export STRIP=llvm-strip
 
-          cp "${{ github.workspace }}/_setup_env.sh" ./ 2>/dev/null || true
-          chmod 777 ./*.sh 2>/dev/null || true
-          source "./_setup_env.sh" 2>/dev/null || true
+          if [ -f "${{ github.workspace }}/_setup_env.sh" ]; then
+            cp "${{ github.workspace }}/_setup_env.sh" ./_setup_env.sh
+            chmod +x ./_setup_env.sh || true
+
+            sed -E 's/^([[:space:]]*)exit([[:space:]]|$)/\1return\2/g' ./_setup_env.sh > ./_setup_env.safe.sh
+            chmod +x ./_setup_env.safe.sh || true
+
+            set +e
+            set +u
+            source ./_setup_env.safe.sh
+            SETUP_ENV_RC=$?
+            set -u
+            set -e
+
+            if [ "$SETUP_ENV_RC" -ne 0 ]; then
+              echo "::warning::_setup_env.sh returned non-zero exit code: $SETUP_ENV_RC, continuing anyway"
+            fi
+          else
+            echo "_setup_env.sh not found, skipping"
+          fi
 
           export SOURCE_DATE_EPOCH=1757653061
           export KBUILD_BUILD_TIMESTAMP="Fri Sep 12 04:57:41 UTC 2025"
@@ -561,3 +578,4 @@ jobs:
       build_date: ${{ needs.build.outputs.build_date }}
       clang_ver: ${{ needs.build.outputs.clang_ver }}
     secrets: inherit
+``
