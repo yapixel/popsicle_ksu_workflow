@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       sub_level:
-        description: 'Kernel sub level, e.g. 23'
+        description: 'Kernel sub level (e.g. 23)'
         required: true
         type: string
         default: '23'
@@ -92,8 +92,8 @@ jobs:
           TARGET_DIR="$(find mountify_repo -type f -name "Makefile" | grep "nuke_ext4_lkm" | head -n 1 | xargs dirname || true)"
 
           if [ -z "$TARGET_DIR" ]; then
-            echo "Error: Cannot find valid nuke_ext4_lkm module directory with Makefile!"
-            find mountify_repo -maxdepth 5 -type f -name "Makefile" -print
+            echo "Error: Cannot find valid module directory with Makefile!"
+            find mountify_repo -maxdepth 6 -type f -name "Makefile" -print || true
             exit 1
           fi
 
@@ -117,7 +117,7 @@ jobs:
             sed -i '/endmenu/i source "drivers/nuke_ext4_lkm/Kconfig"' drivers/Kconfig
           fi
 
-          if ! grep -q 'drivers/nuke_ext4_lkm' drivers/Makefile; then
+          if ! grep -q 'nuke_ext4_lkm' drivers/Makefile; then
             echo 'obj-m += nuke_ext4_lkm/' >> drivers/Makefile
           fi
 
@@ -170,12 +170,22 @@ jobs:
           echo "CONFIG_NUKE_EXT4_LKM=m" >> out/.config
           make -j"$(nproc --all)" O=out olddefconfig
 
+          echo "===== Kernel module related config ====="
+          grep -E '^CONFIG_MODULES=|^CONFIG_MODVERSIONS=|^CONFIG_MODULE_SIG=|^CONFIG_CFI|^CONFIG_LTO|^CONFIG_KALLSYMS|^CONFIG_KPROBES' out/.config || true
+
           make -j"$(nproc --all)" O=out modules_prepare
+
+          if grep -q '^CONFIG_MODVERSIONS=y' out/.config; then
+            if [ ! -s out/Module.symvers ]; then
+              echo "Error: CONFIG_MODVERSIONS=y but out/Module.symvers is missing or empty."
+              echo "Refusing to build/upload nuke.ko because symbol CRC may be unsafe."
+              exit 1
+            fi
+          fi
 
           make -j"$(nproc --all)" \
             O=out \
             M="$COMMON_REAL_PATH/drivers/nuke_ext4_lkm" \
-            KBUILD_MODPOST_WARN=1 \
             modules
 
           echo "Module build finished"
@@ -205,8 +215,58 @@ jobs:
           file ./nuke.ko || true
           ls -lh ./nuke.ko
 
+      - name: Inspect nuke.ko Safety
+        run: |
+          set -euxo pipefail
+
+          cd kernel_workspace
+
+          {
+            echo "===== nuke.ko file ====="
+            file ./nuke.ko || true
+            echo
+
+            echo "===== nuke.ko modinfo ====="
+            modinfo ./nuke.ko || true
+            echo
+
+            echo "===== nuke.ko vermagic ====="
+            modinfo ./nuke.ko | grep -i '^vermagic' || true
+            echo
+
+            echo "===== nuke.ko depends ====="
+            modinfo ./nuke.ko | grep -i '^depends' || true
+            echo
+
+            echo "===== Undefined symbols ====="
+            nm -u ./nuke.ko || true
+            echo
+
+            echo "===== Dangerous symbol scan ====="
+            nm -u ./nuke.ko | grep -E 'kallsyms_lookup_name|set_memory_rw|set_memory_ro|set_memory_x|set_memory_nx|text_poke|stop_machine|register_kprobe|unregister_kprobe|kprobe|ftrace|kallsyms|sprint_symbol|lookup_symbol_name' || true
+            echo
+
+            echo "===== ELF header ====="
+            readelf -h ./nuke.ko || true
+            echo
+
+            echo "===== Important ELF sections ====="
+            readelf -S ./nuke.ko | grep -E '\.modinfo|\.text|\.init|\.exit|__versions' || true
+            echo
+          } > ./nuke-module-info.txt
+
+          cat ./nuke-module-info.txt
+
+          echo "===== Strict dangerous symbol warning ====="
+          if nm -u ./nuke.ko | grep -E 'kallsyms_lookup_name|set_memory_rw|set_memory_ro|set_memory_x|set_memory_nx|text_poke|stop_machine|register_kprobe|unregister_kprobe|kprobe|ftrace|kallsyms|sprint_symbol|lookup_symbol_name'; then
+            echo "::warning::nuke.ko references dangerous hook/patch/symbol-lookup related symbols."
+            echo "::warning::This may still bootloop if module_init patches kernel/ext4 incorrectly."
+          fi
+
       - name: Upload nuke.ko Artifact
         uses: actions/upload-artifact@v7.0.1
         with:
           name: nuke-module
-          path: kernel_workspace/nuke.ko
+          path: |
+            kernel_workspace/nuke.ko
+            kernel_workspace/nuke-module-info.txt
