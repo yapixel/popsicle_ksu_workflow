@@ -55,7 +55,7 @@ jobs:
 
           wget \
             "https://android.googlesource.com/kernel/common/+archive/refs/heads/android16-6.12-lts.tar.gz" \
-            -o common.tar.gz
+            -O common.tar.gz
 
           mkdir -p common
           tar -xzf common.tar.gz -C common
