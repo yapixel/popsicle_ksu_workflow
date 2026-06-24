@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       sub_level:
-        description: 'Kernel sub level (e.g. 23)'
+        description: 'Kernel sub level (e.g. lts)'
         required: true
         type: string
-        default: '23'
+        default: 'lts'
 
 jobs:
   build:
