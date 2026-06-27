@@ -96,6 +96,9 @@ runs:
         CONFIG_KSU_DEBUG=y
         CONFIG_KSU_HACK_ARM64_BRANCH_LINK=y
         CONFIG_KSU_LSM_SECURITY_HOOKS=y
+        # CONFIG_MODULE_SIG_FORCE is not set
+        # CONFIG_MODULE_SIG_ALL is not set
+        CONFIG_MODULE_UNLOAD=y
         EOF
         elif [ "${{ inputs.variant }}" = "xxksu_manual" ]; then
         cat >> $DEFCONFIG <<-'EOF'
