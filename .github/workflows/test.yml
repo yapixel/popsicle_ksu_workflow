@@ -19,7 +19,7 @@ on:
         description: 'Kernel sub level (e.g. 23)'
         required: true
         type: string
-        default: '23'
+        default: '38'
 
 jobs:
   build:
@@ -59,7 +59,7 @@ jobs:
           mkdir -p kernel_workspace && cd kernel_workspace 
           
           # Kernel source
-          aria2c -s16 -x16 -k1M "https://github.com/yapixel/gki-build-assets/releases/download/android16-6.12-2025-06_r58/common-android16-6.12-2025-06_r58.tar.gz" -o common.tar.gz
+          aria2c -s16 -x16 -k1M "https://github.com/yapixel/gki-build-assets/releases/download/kernel-archive-android16-6.12-2025-09_r35/common-android16-6.12-2025-09_r35.tar.gz" -o common.tar.gz
           mkdir -p common && tar -xzf common.tar.gz -C common && rm common.tar.gz
           
           # Clang
