@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 300
     env:
       ANDROID_VERSION: 'android16'
-      KSU_BRANCH: 'staging'
+      KSU_BRANCH: 'master'
       SCRIPTS_REPO: 'https://github.com/TheSillyOk/sh'
     outputs:
       build_date: ${{ steps.pkg.outputs.build_date }}
@@ -148,7 +148,7 @@ jobs:
         with:
           defconfig_path: "kernel_workspace/common/arch/arm64/configs/gki_defconfig"
           build_config_path: "kernel_workspace/common/build.config.gki"
-          variant: "xxksu_new"
+          variant: "xxksu"
           enable_susfs: "true"
 
       - name: Compile Kernel
