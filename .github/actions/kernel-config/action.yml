@@ -130,14 +130,14 @@ runs:
           xxksu)
             set_config CONFIG_KSU y "$DEFCONFIG"
             set_config CONFIG_KSU_EXTRAS y "$DEFCONFIG"
-            set_config CONFIG_KSU_TAMPER_SYSCALL_TABLE y "$DEFCONFIG"
+            set_config CONFIG_KSU_HACK_ARM64_BRANCH_LINK y "$DEFCONFIG"
             set_config CONFIG_KSU_LSM_SECURITY_HOOKS y "$DEFCONFIG"
             ;;
 
           xxksu_old)
             set_config CONFIG_KSU y "$DEFCONFIG"
             set_config CONFIG_KSU_EXTRAS y "$DEFCONFIG"
-            set_config CONFIG_KSU_HACK_ARM64_BRANCH_LINK y "$DEFCONFIG"
+            set_config CONFIG_KSU_TAMPER_SYSCALL_TABLE y "$DEFCONFIG"
             set_config CONFIG_KSU_LSM_SECURITY_HOOKS y "$DEFCONFIG"
             ;;
 
