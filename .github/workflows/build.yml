@@ -1,4 +1,4 @@
-name: Build xxKSU + SUSFS
+name: Build KSU + SUSFS
 
 on:
   workflow_dispatch:
