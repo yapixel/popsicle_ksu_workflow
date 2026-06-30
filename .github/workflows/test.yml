@@ -211,37 +211,59 @@ jobs:
           echo "编译后空间:"
           df -h
 
-      - name: Package & Boot-Ready Check
-        id: pkg
+      - name: Package Kernel ZIP and vmlinux ZIP
         run: |
           cd kernel_workspace
+
           IMAGE="./common/out/arch/arm64/boot/Image"
+          VMLINUX="./common/out/vmlinux"
+
           [ -f "$IMAGE" ] || (echo "Image binary missing!" && exit 1)
+          [ -f "$VMLINUX" ] || (echo "vmlinux missing!" && exit 1)
 
           git clone https://github.com/yapixel/AnyKernel3 --depth=1
-          cp "$IMAGE" ./AnyKernel3/ && cd AnyKernel3
 
-          echo "Kernel Version: ${{ steps.meta.outputs.kernel_version_full }}" > build_info.txt
-          echo "KernelSU Version: ${{ steps.meta.outputs.ksu_ver }}" >> build_info.txt
-          echo "SuSFS Version: ${{ steps.meta.outputs.susfs_ver }}" >> build_info.txt
-          echo "Build Date: $(date)" >> build_info.txt
 
-          BUILD_DATE="$(date +'%y%m%d')"
-          echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
-          
-          ZIP_NAME="xxksu_${{ steps.meta.outputs.ksu_ver }}_${{ steps.meta.outputs.kernel_version }}.${{ inputs.sub_level }}-${BUILD_DATE}-SuSFS_${{ steps.meta.outputs.susfs_ver }}.zip"
+          cp "$IMAGE" ./AnyKernel3/
+
+
+
+
+          SUB="${{ inputs.sub_level || github.event.inputs.sub_level || '100' }}"
+          KSU_VER="${{ steps.meta.outputs.ksu_ver }}"
+          BUILD_DATE="${{ steps.meta.outputs.build_date }}"
+
+          ZIP_NAME="KSU_popsicle_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}.zip"
+          VMLINUX_RAW_NAME="vmlinux_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}"
+          VMLINUX_ZIP_NAME="vmlinux_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}.zip"
+
+          # Create flashable AnyKernel3 ZIP
+          cd AnyKernel3
           zip -r9 "../$ZIP_NAME" *
+          cd ..
+
+          # Create separate vmlinux ZIP
+          cp "$VMLINUX" "./$VMLINUX_RAW_NAME"
+          zip -9 "$VMLINUX_ZIP_NAME" "$VMLINUX_RAW_NAME"
+
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          echo "VMLINUX_ZIP_NAME=$VMLINUX_ZIP_NAME" >> $GITHUB_ENV
 
-      - name: Collect Workflow Step Outputs
-        id: set-outputs
-        run: |
-          echo "clang_ver=${{ env.CLANG_VER }}" >> $GITHUB_OUTPUT
+          echo "Created files:"
+          ls -lh "$ZIP_NAME" "$VMLINUX_ZIP_NAME"
 
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v7.0.1
+
+
+      - name: Upload Kernel ZIP
+        uses: actions/upload-artifact@v7.0.0
         with:
-          name: kernel-xxku-susfs
+          name: kernel-xxksu
           path: kernel_workspace/${{ env.ZIP_NAME }}
+
+      - name: Upload vmlinux ZIP
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: vmlinux-xxksu
+          path: kernel_workspace/${{ env.VMLINUX_ZIP_NAME }}
 
   
