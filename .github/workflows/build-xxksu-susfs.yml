@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 300
     env:
       ANDROID_VERSION: 'android16'
-      KSU_BRANCH: 'master'
+      KSU_BRANCH: '32552g'
       SCRIPTS_REPO: 'https://github.com/TheSillyOk/sh'
     outputs:
       build_date: ${{ steps.pkg.outputs.build_date }}
