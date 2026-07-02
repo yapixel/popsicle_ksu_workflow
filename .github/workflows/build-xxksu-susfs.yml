@@ -76,7 +76,7 @@ jobs:
           cd kernel_workspace/common
           git clone --depth=1 --branch=${{ env.KSU_BRANCH }} https://github.com/backslashxx/KernelSU KernelSU
           cd KernelSU
-          git checkout 738acf8
+          git checkout 32522g
           cd ..
           ln -sf ../KernelSU/kernel drivers/kernelsu
           grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
