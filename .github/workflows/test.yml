@@ -64,7 +64,6 @@ jobs:
       
          patch -p1 -l < "${{ github.workspace }}/.github/patches/gki/unicode_bypass_fix.patch"
 
-
       - name: Sync SuSFS Source
         run: |
           SUSFS_DIR="${{ github.workspace }}/susfs4ksu"
@@ -217,17 +216,15 @@ jobs:
 
           IMAGE="./common/out/arch/arm64/boot/Image"
           VMLINUX="./common/out/vmlinux"
+          SYSTEM_MAP="./common/out/System.map"
 
           [ -f "$IMAGE" ] || (echo "Image binary missing!" && exit 1)
           [ -f "$VMLINUX" ] || (echo "vmlinux missing!" && exit 1)
+          [ -f "$SYSTEM_MAP" ] || (echo "System.map missing!" && exit 1)
 
           git clone https://github.com/yapixel/AnyKernel3 --depth=1
 
-
           cp "$IMAGE" ./AnyKernel3/
-
-
-
 
           SUB="${{ inputs.sub_level || github.event.inputs.sub_level || '100' }}"
           KSU_VER="${{ steps.meta.outputs.ksu_ver }}"
@@ -236,6 +233,8 @@ jobs:
           ZIP_NAME="KSU_popsicle_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}.zip"
           VMLINUX_RAW_NAME="vmlinux_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}"
           VMLINUX_ZIP_NAME="vmlinux_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}.zip"
+          SYSTEM_MAP_RAW_NAME="System.map_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}"
+          SYSTEM_MAP_ZIP_NAME="System.map_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}.zip"
 
           # Create flashable AnyKernel3 ZIP
           cd AnyKernel3
@@ -246,13 +245,16 @@ jobs:
           cp "$VMLINUX" "./$VMLINUX_RAW_NAME"
           zip -9 "$VMLINUX_ZIP_NAME" "$VMLINUX_RAW_NAME"
 
+          # Create separate System.map ZIP
+          cp "$SYSTEM_MAP" "./$SYSTEM_MAP_RAW_NAME"
+          zip -9 "$SYSTEM_MAP_ZIP_NAME" "$SYSTEM_MAP_RAW_NAME"
+
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
           echo "VMLINUX_ZIP_NAME=$VMLINUX_ZIP_NAME" >> $GITHUB_ENV
+          echo "SYSTEM_MAP_ZIP_NAME=$SYSTEM_MAP_ZIP_NAME" >> $GITHUB_ENV
 
           echo "Created files:"
-          ls -lh "$ZIP_NAME" "$VMLINUX_ZIP_NAME"
-
-
+          ls -lh "$ZIP_NAME" "$VMLINUX_ZIP_NAME" "$SYSTEM_MAP_ZIP_NAME"
 
       - name: Upload Kernel ZIP
         uses: actions/upload-artifact@v7.0.0
@@ -266,4 +268,8 @@ jobs:
           name: vmlinux-xxksu
           path: kernel_workspace/${{ env.VMLINUX_ZIP_NAME }}
 
-  
+      - name: Upload System.map ZIP
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: system-map-xxksu
+          path: kernel_workspace/${{ env.SYSTEM_MAP_ZIP_NAME }}
