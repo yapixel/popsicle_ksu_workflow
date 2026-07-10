@@ -228,7 +228,10 @@ jobs:
 
           SUB="${{ inputs.sub_level || github.event.inputs.sub_level || '100' }}"
           KSU_VER="${{ steps.meta.outputs.ksu_ver }}"
-          BUILD_DATE="${{ steps.meta.outputs.build_date }}"
+          
+          BUILD_DATE="$(date +'%y%m%d')"
+          echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+          
 
           ZIP_NAME="KSU_popsicle_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}.zip"
           VMLINUX_RAW_NAME="vmlinux_6.12.${SUB}+${KSU_VER#v}-${BUILD_DATE}"
