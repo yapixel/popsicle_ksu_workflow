@@ -60,7 +60,7 @@ runs:
         ########################################
         set_config CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE y "$DEFCONFIG"
         set_config CONFIG_RUST y "$DEFCONFIG"
-        set_config CONFIG_LOG_BUF_SHIFT 21 "$DEFCONFIG"
+        set_config CONFIG_LOG_BUF_SHIFT 23 "$DEFCONFIG"
         set_config CONFIG_ANDROID_BINDER_IPC_RUST m "$DEFCONFIG"
         set_config CONFIG_TMPFS_XATTR y "$DEFCONFIG"
         set_config CONFIG_TMPFS_POSIX_ACL y "$DEFCONFIG"
