@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       sub_level:
-        description: 'Kernel sub level (e.g. 23)'
+        description: 'Kernel sub level (e.g. 23 or 69)'
         required: true
         type: string
         default: '23'
@@ -41,7 +41,13 @@ jobs:
         run: |
           mkdir -p kernel_workspace && cd kernel_workspace 
           
-          aria2c -s16 -x16 -k1M "https://github.com/yapixel/gki-build-assets/releases/download/android16-6.12-2025-06_r58/common-android16-6.12-2025-06_r58.tar.gz" -o common.tar.gz
+          if [ "${{ inputs.sub_level }}" = "69" ]; then
+            COMMON_URL="https://github.com/yapixel/gki-build-assets/releases/download/kernel-archive-android16-6.12-2026-03_r60/common-android16-6.12-2026-03_r60.tar.gz"
+          else
+            COMMON_URL="https://github.com/yapixel/gki-build-assets/releases/download/android16-6.12-2025-06_r58/common-android16-6.12-2025-06_r58.tar.gz"
+          fi
+          
+          aria2c -s16 -x16 -k1M "$COMMON_URL" -o common.tar.gz
           mkdir -p common && tar -xzf common.tar.gz -C common && rm common.tar.gz
           
           aria2c -s16 -x16 -k1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-r536225.tar.gz" -o clang.tar.gz
@@ -241,7 +247,7 @@ jobs:
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: kernel-xxku-susfs
+          name: kernel-xxksu-6.12.${{ inputs.sub_level }}-susfs
           path: kernel_workspace/${{ env.ZIP_NAME }}
 
   publish-release:
