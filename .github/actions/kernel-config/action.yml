@@ -158,7 +158,18 @@ runs:
             set_config CONFIG_KSU_LSM_SECURITY_HOOKS n "$DEFCONFIG"
             set_config CONFIG_KSU_KPROBES_KSUD n "$DEFCONFIG"
             ;;
-
+            
+          xxksu_tinyfs)
+            set_config CONFIG_KSU y "$DEFCONFIG"
+            set_config CONFIG_KSU_TINYFS_SUCOMPAT y "$DEFCONFIG"
+            unset_config CONFIG_KSU_TAMPER_SYSCALL_TABLE "$DEFCONFIG"
+            unset_config CONFIG_KSU_HACK_ARM64_BRANCH_LINK "$DEFCONFIG"
+            unset_config CONFIG_KSU_FEATURE_ADBROOT "$DEFCONFIG"
+            set_config CONFIG_KSU_LSM_SECURITY_HOOKS y "$DEFCONFIG"
+            set_config CONFIG_KSU_EXTRAS y "$DEFCONFIG"
+            set_config CONFIG_KSU_FEATURE_SULOG y "$DEFCONFIG"
+            ;;
+    
           *kowsu*)
             set_config CONFIG_KSU y "$DEFCONFIG"
             set_config CONFIG_KPROBES y "$DEFCONFIG"
