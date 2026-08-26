@@ -347,13 +347,21 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
 index 12a7a170..45b8be23 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
-@@ -200,6 +200,14 @@ out_flush:
+@@ -138,5 +138,5 @@ static void reset_avc_cache(void)
+ void apply_kernelsu_rules(void)
+ {
+-	struct policydb *db;
++	struct policydb *db = NULL;
+ 
+@@ -200,6 +200,16 @@ out_flush:
  	smp_mb();
  	reset_avc_cache();
  #endif
 +#ifdef CONFIG_KSU_SUSFS
 +    // Allow umount in zygote process without installing zygisk
-+    ksu_allow(db, "zygote", "labeledfs", "filesystem", "unmount");
++    if (db) {
++        ksu_allow(db, "zygote", "labeledfs", "filesystem", "unmount");
++    }
 +    susfs_set_priv_app_sid();
 +    susfs_set_init_sid();
 +    susfs_set_ksu_sid();
