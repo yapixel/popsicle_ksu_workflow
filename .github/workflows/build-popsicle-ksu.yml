@@ -130,6 +130,9 @@ jobs:
           restore-keys: |
             ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-
             ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-
+            ccache-gki-6.12.${{ matrix.sub_level }}-${{ matrix.enable_susfs }}-
+            ccache-gki-6.12.${{ matrix.sub_level }}-
+            ccache-gki-6.12-
 
       - name: Setup Ccache Configurations & Wrappers
         if: github.event.inputs.use_ccache != 'false'
@@ -440,6 +443,9 @@ jobs:
           restore-keys: |
             ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-
             ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-
+            ccache-gki-6.12.${{ matrix.sub_level }}-${{ matrix.enable_susfs }}-
+            ccache-gki-6.12.${{ matrix.sub_level }}-
+            ccache-gki-6.12-
 
       - name: Setup Ccache Configurations & Wrappers
         if: github.event.inputs.use_ccache != 'false'
