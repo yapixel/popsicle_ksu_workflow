@@ -375,12 +375,22 @@ jobs:
 
             if [ -f "kernel_workspace/common/out/vmlinux" ]; then
               cp kernel_workspace/common/out/vmlinux ./vmlinux
+            elif [ -f "kernel_workspace/common/out/arch/arm64/boot/vmlinux" ]; then
+              cp kernel_workspace/common/out/arch/arm64/boot/vmlinux ./vmlinux
+            else
+              find kernel_workspace/common/out -name "vmlinux" -type f -exec cp {} ./vmlinux \; || true
+            fi
+            if [ -f "./vmlinux" ]; then
               zip -9 "$VMLINUX_ZIP_NAME" vmlinux
               mv "$VMLINUX_ZIP_NAME" ./output_artifacts/
             fi
 
             if [ -f "kernel_workspace/common/out/System.map" ]; then
               cp kernel_workspace/common/out/System.map ./System.map
+            else
+              find kernel_workspace/common/out -name "System.map" -type f -exec cp {} ./System.map \; || true
+            fi
+            if [ -f "./System.map" ]; then
               zip -9 "$SYSMAP_ZIP_NAME" System.map
               mv "$SYSMAP_ZIP_NAME" ./output_artifacts/
             fi
@@ -673,12 +683,22 @@ jobs:
 
             if [ -f "kernel_workspace/common/out/vmlinux" ]; then
               cp kernel_workspace/common/out/vmlinux ./vmlinux
+            elif [ -f "kernel_workspace/common/out/arch/arm64/boot/vmlinux" ]; then
+              cp kernel_workspace/common/out/arch/arm64/boot/vmlinux ./vmlinux
+            else
+              find kernel_workspace/common/out -name "vmlinux" -type f -exec cp {} ./vmlinux \; || true
+            fi
+            if [ -f "./vmlinux" ]; then
               zip -9 "$VMLINUX_ZIP_NAME" vmlinux
               mv "$VMLINUX_ZIP_NAME" ./output_artifacts/
             fi
 
             if [ -f "kernel_workspace/common/out/System.map" ]; then
               cp kernel_workspace/common/out/System.map ./System.map
+            else
+              find kernel_workspace/common/out -name "System.map" -type f -exec cp {} ./System.map \; || true
+            fi
+            if [ -f "./System.map" ]; then
               zip -9 "$SYSMAP_ZIP_NAME" System.map
               mv "$SYSMAP_ZIP_NAME" ./output_artifacts/
             fi
