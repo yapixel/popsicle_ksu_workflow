@@ -152,7 +152,8 @@ jobs:
           fi
 
           cd KernelSU
-          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/11_enable_susfs_for_ksu.patch"
+          #patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/11_enable_susfs_for_ksu.patch"
+          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/0001-xxKSU-kernel-implement-susfs-v2.2.0-De-inlined.patch
 
       - name: Inject Defconfig Flags
         uses: ./.github/actions/kernel-config
