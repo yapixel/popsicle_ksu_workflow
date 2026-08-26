@@ -332,8 +332,16 @@ jobs:
           chmod 777 ./*.sh 2>/dev/null || true
           source "./_setup_env.sh" 2>/dev/null || true
 
+          if [ "${{ github.event.inputs.use_ccache }}" != "false" ]; then
+            export PATH="${{ github.workspace }}/.ccache-bin:$PATH"
+            export CC="ccache clang"
+            export HOSTCC="ccache clang"
+            export CXX="ccache clang++"
+            export HOSTCXX="ccache clang++"
+          fi
+
           make -j"$(nproc --all)" O=out gki_defconfig
-          make -j"$(nproc --all)" O=out Image
+          make -j"$(nproc --all)" O=out CC="${CC:-clang}" HOSTCC="${HOSTCC:-clang}" Image
 
       - name: Ccache Performance Stats
         if: github.event.inputs.use_ccache != 'false'
@@ -665,8 +673,16 @@ jobs:
           chmod 777 ./*.sh 2>/dev/null || true
           source "./_setup_env.sh" 2>/dev/null || true
 
+          if [ "${{ github.event.inputs.use_ccache }}" != "false" ]; then
+            export PATH="${{ github.workspace }}/.ccache-bin:$PATH"
+            export CC="ccache clang"
+            export HOSTCC="ccache clang"
+            export CXX="ccache clang++"
+            export HOSTCXX="ccache clang++"
+          fi
+
           make -j"$(nproc --all)" O=out gki_defconfig
-          make -j"$(nproc --all)" O=out Image
+          make -j"$(nproc --all)" O=out CC="${CC:-clang}" HOSTCC="${HOSTCC:-clang}" Image
 
       - name: Ccache Performance Stats
         if: github.event.inputs.use_ccache != 'false'
