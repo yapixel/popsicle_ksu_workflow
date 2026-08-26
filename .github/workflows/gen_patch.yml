@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Prepare Kernel Source
         run: |
@@ -50,7 +50,7 @@ jobs:
           git format-patch -1 HEAD --stdout > "${{ github.workspace }}/scope-min-manual-hooks-v2.1.patch"
 
       - name: Export Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: scope-min-v2.1-native
           path: scope-min-manual-hooks-v2.1.patch

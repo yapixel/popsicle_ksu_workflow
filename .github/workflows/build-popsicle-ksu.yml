@@ -1,0 +1,779 @@
+name: Build Popsicle GKI + KSU (Matrix)
+
+on:
+  workflow_dispatch:
+    inputs:
+      sub_level:
+        description: 'Kernel Sub-level'
+        required: true
+        type: choice
+        options:
+          - 'all'
+          - '23'
+          - '69'
+        default: 'all'
+      hook_mode:
+        description: 'Hook Mode to Build'
+        required: true
+        type: choice
+        options:
+          - 'all'
+          - 'manual'
+          - 'lsm'
+        default: 'all'
+      enable_susfs:
+        description: 'SuSFS Integration'
+        required: true
+        type: choice
+        options:
+          - 'all'
+          - 'true'
+          - 'false'
+        default: 'all'
+      ksu_branch:
+        description: 'KernelSU Branch'
+        required: true
+        type: choice
+        options:
+          - 'master'
+          - 'staging'
+        default: 'master'
+      use_ccache:
+        description: 'Enable Ccache Acceleration'
+        required: true
+        type: boolean
+        default: true
+      create_release:
+        description: 'Create GitHub Release'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.ksu_branch }}
+  cancel-in-progress: false
+
+env:
+  ANYKERNEL_REPO: https://github.com/yapixel/AnyKernel3.git
+  SUSFS_REPO_URL: https://gitlab.com/simonpunk/susfs4ksu
+  SUSFS_REPO_BRANCH: gki-android16-6.12
+  SCRIPTS_REPO: https://github.com/TheSillyOk/sh
+  KSU_REPO: backslashxx/KernelSU
+  CCACHE_DIR: "${{ github.workspace }}/.ccache"
+  CCACHE_COMPILERCHECK: "content"
+  CCACHE_NOHASHDIR: "true"
+  CCACHE_TEMPDIR: "/dev/shm/ccache-temp"
+
+jobs:
+  matrix_prep:
+    name: Prepare Environment
+    runs-on: ubuntu-latest
+    outputs:
+      sub_level_matrix: ${{ steps.set-matrix.outputs.sub_level_matrix }}
+      susfs_matrix: ${{ steps.set-matrix.outputs.susfs_matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          SUB_INPUT="${{ github.event.inputs.sub_level }}"
+          if [ -z "$SUB_INPUT" ] || [ "$SUB_INPUT" = "all" ]; then
+            echo 'sub_level_matrix=["23", "69"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "sub_level_matrix=[\"$SUB_INPUT\"]" >> "$GITHUB_OUTPUT"
+          fi
+
+          SUSFS_INPUT="${{ github.event.inputs.enable_susfs }}"
+          if [ -z "$SUSFS_INPUT" ] || [ "$SUSFS_INPUT" = "all" ]; then
+            echo 'susfs_matrix=["true", "false"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "susfs_matrix=[\"$SUSFS_INPUT\"]" >> "$GITHUB_OUTPUT"
+          fi
+
+  build_manual:
+    name: Manual Hook 6.12.${{ matrix.sub_level }} (SUSFS=${{ matrix.enable_susfs }})
+    if: github.event.inputs.hook_mode == 'all' || github.event.inputs.hook_mode == 'manual' || github.event_name != 'workflow_dispatch'
+    needs: matrix_prep
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sub_level: ${{ fromJson(needs.matrix_prep.outputs.sub_level_matrix) }}
+        enable_susfs: ${{ fromJson(needs.matrix_prep.outputs.susfs_matrix) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Configure Fast Git Protocol
+        run: |
+          git config --global protocol.version 2
+          git config --global http.postBuffer 524288000
+          git config --global http.version HTTP/2
+          git config --global core.compression 0
+
+      - name: Free Disk Space & Install Fast Tools
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true &
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            binutils python-is-python3 libssl-dev libelf-dev libdw-dev bison flex bc aria2 ccache zip zstd m4
+
+      - name: Cache Ccache Data
+        if: github.event.inputs.use_ccache != 'false'
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-${{ github.sha }}
+          restore-keys: |
+            ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-
+            ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-
+
+      - name: Setup Ccache Configurations & Wrappers
+        if: github.event.inputs.use_ccache != 'false'
+        run: |
+          mkdir -p "${{ env.CCACHE_DIR }}"
+          mkdir -p /dev/shm/ccache-temp
+
+          CCACHE_BIN="${{ github.workspace }}/.ccache-bin"
+          mkdir -p "$CCACHE_BIN"
+          for prog in clang clang++ ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-readelf llvm-strip; do
+            ln -sf "$(which ccache)" "$CCACHE_BIN/$prog"
+          done
+          echo "$CCACHE_BIN" >> "$GITHUB_PATH"
+
+          ccache -M 10G \
+            -o hash_dir=false \
+            -o compiler_check=content \
+            -o "sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,modules,system_headers" \
+            -o depend_mode=true \
+            -o run_second_cpp=true \
+            -o compression=true \
+            -o compression_level=1 \
+            -o keep_comments_cpp=true \
+            -o "cache_dir=${{ env.CCACHE_DIR }}" \
+            -o "base_dir=${{ github.workspace }}" \
+            -o "temporary_dir=/dev/shm/ccache-temp" \
+            -o file_clone=false \
+            -o hard_link=false \
+            -z
+
+      - name: Cache Clang & Build Toolchains
+        id: toolchain-cache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ github.workspace }}/kernel_workspace/toolchains
+          key: gki-toolchains-r536225-rust1.82.0
+
+      - name: Install Toolchains & Source
+        run: |
+          mkdir -p kernel_workspace/toolchains && cd kernel_workspace
+          
+          if [ "${{ steps.toolchain-cache.outputs.cache-hit }}" != "true" ] || [ ! -d "toolchains/clang/bin" ]; then
+            echo "⚡ Cache miss: Downloading Clang & Build Toolchains with aria2c..."
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-r536225.tar.gz" -o clang.tar.gz
+            mkdir -p toolchains/clang && tar -xzf clang.tar.gz -C toolchains/clang && rm -f clang.tar.gz
+
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/rust-1.82.0.tar.gz" -o rust.tar.gz
+            mkdir -p toolchains/rust && tar -xzf rust.tar.gz -C toolchains/rust && rm -f rust.tar.gz
+
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-tools-r536225.tar.gz" -o clang-tools.tar.gz
+            mkdir -p toolchains/clang-tools && tar -xzf clang-tools.tar.gz -C toolchains/clang-tools && rm -f clang-tools.tar.gz
+
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/build-tools.tar.gz" -o build-tools.tar.gz
+            mkdir -p toolchains/build-tools && tar -xzf build-tools.tar.gz -C toolchains/build-tools && rm -f build-tools.tar.gz
+          else
+            echo "✅ Clang Toolchain restored from Action Cache!"
+          fi
+
+          echo "Downloading GKI 6.12.${{ matrix.sub_level }} kernel source..."
+          if [ "${{ matrix.sub_level }}" = "69" ]; then
+            COMMON_URL="https://github.com/yapixel/gki-build-assets/releases/download/kernel-archive-android16-6.12-2026-03_r60/common-android16-6.12-2026-03_r60.tar.gz"
+          else
+            COMMON_URL="https://github.com/yapixel/gki-build-assets/releases/download/android16-6.12-2025-06_r58/common-android16-6.12-2025-06_r58.tar.gz"
+          fi
+          aria2c -s 16 -x 16 -k 1M "$COMMON_URL" -o common.tar.gz
+          mkdir -p common && tar -xzf common.tar.gz -C common && rm -f common.tar.gz
+          sed -i 's/ -dirty//g' common/scripts/setlocalversion
+
+          echo "$GITHUB_WORKSPACE/kernel_workspace/toolchains/clang/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/kernel_workspace/toolchains/build-tools/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/kernel_workspace/toolchains/clang-tools" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/kernel_workspace/toolchains/rust/bin" >> "$GITHUB_PATH"
+
+      - name: Clone Scripts & AnyKernel3
+        run: |
+          git clone --depth=1 --single-branch --no-tags "${{ env.SCRIPTS_REPO }}" sh
+          git clone --depth=1 --single-branch --no-tags "${{ env.ANYKERNEL_REPO }}" AnyKernel3
+          if [ "${{ matrix.enable_susfs }}" = "true" ]; then
+            git clone --depth=1 --single-branch --no-tags --branch="${{ env.SUSFS_REPO_BRANCH }}" "${{ env.SUSFS_REPO_URL }}" susfs4ksu
+          fi
+
+      - name: Setup xxKSU Source
+        working-directory: kernel_workspace/common
+        run: |
+          KSU_BRANCH="${{ github.event.inputs.ksu_branch || 'master' }}"
+          git clone --depth=1 --single-branch --no-tags --branch="$KSU_BRANCH" "https://github.com/${{ env.KSU_REPO }}" KernelSU
+          ln -sf ../KernelSU/kernel drivers/kernelsu
+          grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
+          grep -q "kernelsu" drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+
+          cp -r KernelSU/uapi KernelSU/kernel/uapi 2>/dev/null || true
+          echo 'ccflags-y += -I$(srctree)/drivers/kernelsu' >> drivers/kernelsu/Makefile
+          mkdir -p include/uapi
+          cp -f KernelSU/kernel/policy/*.h include/uapi/ 2>/dev/null || true
+          cp -f KernelSU/kernel/policy/*.h include/ 2>/dev/null || true
+          cp -f KernelSU/kernel/include/*.h include/ 2>/dev/null || true
+          cp -f KernelSU/kernel/uapi/*.h include/uapi/ 2>/dev/null || true
+
+      - name: Metadata
+        id: meta
+        run: |
+          KSU_BRANCH="${{ github.event.inputs.ksu_branch || 'master' }}"
+          K_VER=$(./sh/get_ksuver.sh "backslashxx" "KernelSU" "$KSU_BRANCH" || echo "unknown")
+
+          RAW_TOOLCHAIN_STR=$(clang --version 2>&1 | head -n1)
+          TOOLCHAIN_DISPLAY="$RAW_TOOLCHAIN_STR"
+
+          SUSFS_VER="unknown"
+          if [ -f "susfs4ksu/kernel_patches/include/linux/susfs.h" ]; then
+            SUSFS_VER=$(grep -E '#define SUSFS_VERSION' susfs4ksu/kernel_patches/include/linux/susfs.h | awk -F '"' '{print $2}')
+          fi
+
+          echo "ksu_ver=$K_VER" >> "$GITHUB_OUTPUT"
+          echo "toolchain_display=$TOOLCHAIN_DISPLAY" >> "$GITHUB_OUTPUT"
+          echo "kernel_ver=6.12.${{ matrix.sub_level }}" >> "$GITHUB_OUTPUT"
+          echo "susfs_ver=$SUSFS_VER" >> "$GITHUB_OUTPUT"
+
+          echo "======================================"
+          echo "🐧 Kernel Base: Linux 6.12.${{ matrix.sub_level }} (GKI / Popsicle)"
+          echo "🔧 KSU Branch: $KSU_BRANCH (+$K_VER)"
+          echo "🪝 Hook Mode: manual"
+          echo "🛡️ SUSFS: ${{ matrix.enable_susfs }} ($SUSFS_VER)"
+          echo "⚙️ Toolchain: $TOOLCHAIN_DISPLAY"
+          echo "⚡ Ccache: ${{ github.event.inputs.use_ccache != 'false' && 'Enabled' || 'Disabled' }}"
+          echo "======================================"
+
+      - name: Apply GKI & Manual Hook Patches
+        working-directory: kernel_workspace/common
+        run: |
+          patch -p1 -l < "${{ github.workspace }}/.github/patches/gki/unicode_bypass_fix.patch" || true
+          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/manual-security-hooks-v2.0.patch"
+          patch -p1 -l < "${{ github.workspace }}/.github/patches/xxksu/scope-min-manual-hooks-v2.2.patch"
+
+      - name: Apply SuSFS Patches
+        if: matrix.enable_susfs == 'true'
+        working-directory: kernel_workspace/common
+        run: |
+          echo "Applying SuSFS patches (GKI 6.12.${{ matrix.sub_level }})..."
+          cp "${{ github.workspace }}/susfs4ksu/kernel_patches/fs/susfs.c" fs/
+          cp "${{ github.workspace }}/susfs4ksu/kernel_patches/include/linux/susfs.h" include/linux/
+          cp "${{ github.workspace }}/susfs4ksu/kernel_patches/include/linux/susfs_def.h" include/linux/
+
+          if [ "${{ matrix.sub_level }}" = "69" ]; then
+            patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/51_deinlined_susfs_hooks_gki-android16-6.12.69.patch" || true
+          else
+            patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/51_deinlined_susfs_hooks_gki-android16-6.12.23.patch" || true
+          fi
+
+          cd KernelSU
+          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/0001-xxKSU-kernel-implement-susfs-v2.2.0-De-inlined.patch" || true
+
+      - name: Inject Defconfig Flags
+        uses: ./.github/actions/kernel-config
+        with:
+          defconfig_path: "kernel_workspace/common/arch/arm64/configs/gki_defconfig"
+          build_config_path: "kernel_workspace/common/build.config.gki"
+          hook_mode: "manual"
+          enable_susfs: "${{ matrix.enable_susfs }}"
+
+      - name: Build Kernel (Production)
+        working-directory: kernel_workspace/common
+        env:
+          LLVM: 1
+          LLVM_IAS: 1
+          ARCH: arm64
+          SUBARCH: arm64
+          CROSS_COMPILE: aarch64-linux-gnu-
+          HOSTCC: clang
+          HOSTLD: ld.lld
+          CC: clang
+          LD: ld.lld
+          AR: llvm-ar
+          NM: llvm-nm
+          OBJCOPY: llvm-objcopy
+          OBJDUMP: llvm-objdump
+          READELF: llvm-readelf
+          STRIP: llvm-strip
+          SOURCE_DATE_EPOCH: 1757653061
+          KBUILD_BUILD_TIMESTAMP: "Fri Sep 12 04:57:41 UTC 2025"
+          KBUILD_BUILD_HOST: "build-host"
+          KBUILD_BUILD_USER: "kleaf"
+          CCACHE_BASEDIR: ${{ github.workspace }}
+        run: |
+          COMMON_REAL_PATH=$(pwd -P)
+          ROOT_REAL_PATH=$(dirname "$COMMON_REAL_PATH")
+          export KCFLAGS="-fdebug-prefix-map=$ROOT_REAL_PATH=. -fmacro-prefix-map=$ROOT_REAL_PATH=. -ffile-prefix-map=$ROOT_REAL_PATH=. -no-canonical-prefixes -O2 -pipe -Wno-error -fno-stack-protector -D__ANDROID_COMMON_KERNEL__"
+
+          cp ${{ github.workspace }}/_setup_env.sh ./ 2>/dev/null || true
+          chmod 777 ./*.sh 2>/dev/null || true
+          source "./_setup_env.sh" 2>/dev/null || true
+
+          make -j"$(nproc --all)" O=out gki_defconfig
+          make -j"$(nproc --all)" O=out Image
+
+      - name: Ccache Performance Stats
+        if: github.event.inputs.use_ccache != 'false'
+        run: |
+          echo "=== Ccache Performance Stats (manual 6.12.${{ matrix.sub_level }}, SUSFS=${{ matrix.enable_susfs }}) ==="
+          ccache -s
+
+      - name: Package
+        run: |
+          IMAGE="kernel_workspace/common/out/arch/arm64/boot/Image"
+          [ -f "$IMAGE" ] || { echo "Error: Image binary missing!"; exit 1; }
+
+          cp "$IMAGE" AnyKernel3/Image
+
+          DATE=$(date +'%y%m%d')
+          KSU_BRANCH="${{ github.event.inputs.ksu_branch || 'master' }}"
+          K_VER="${{ steps.meta.outputs.ksu_ver }}"
+          SUSFS_VER="${{ steps.meta.outputs.susfs_ver }}"
+          TOOLCHAIN_DISPLAY="${{ steps.meta.outputs.toolchain_display }}"
+
+          if [ "$KSU_BRANCH" = "staging" ]; then
+            BRANCH_TAG="-staging"
+          else
+            BRANCH_TAG=""
+          fi
+          
+          if [ "${{ matrix.enable_susfs }}" = "true" ]; then
+            SUSFS_TAG="-SUSFS_${SUSFS_VER}"
+          else
+            SUSFS_TAG=""
+          fi
+
+          BASE_NAME="KSU_Popsicle_6.12.${{ matrix.sub_level }}+${K_VER}${BRANCH_TAG}-manual${SUSFS_TAG}-${DATE}"
+          ZIP_NAME="${BASE_NAME}.zip"
+
+          echo "Packaging AnyKernel3: $ZIP_NAME"
+          ( cd AnyKernel3 && zip -r9 "../$ZIP_NAME" . -x "*.git*" )
+
+          mkdir -p ./output_artifacts
+          mv "$ZIP_NAME" ./output_artifacts/
+
+          echo "KERNEL_VER=6.12.${{ matrix.sub_level }}" > ./output_artifacts/build_metadata.env
+          echo "KSU_VER=${K_VER}" >> ./output_artifacts/build_metadata.env
+          echo "TOOLCHAIN_DISPLAY=${TOOLCHAIN_DISPLAY}" >> ./output_artifacts/build_metadata.env
+
+          if [ "$KSU_BRANCH" = "staging" ]; then
+            echo "Packaging debug symbols for staging build..."
+            VMLINUX_ZIP_NAME="vmlinux-${BASE_NAME}.zip"
+            SYSMAP_ZIP_NAME="System.map-${BASE_NAME}.zip"
+
+            if [ -f "kernel_workspace/common/out/vmlinux" ]; then
+              cp kernel_workspace/common/out/vmlinux ./vmlinux
+              zip -9 "$VMLINUX_ZIP_NAME" vmlinux
+              mv "$VMLINUX_ZIP_NAME" ./output_artifacts/
+            fi
+
+            if [ -f "kernel_workspace/common/out/System.map" ]; then
+              cp kernel_workspace/common/out/System.map ./System.map
+              zip -9 "$SYSMAP_ZIP_NAME" System.map
+              mv "$SYSMAP_ZIP_NAME" ./output_artifacts/
+            fi
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: kernel-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}
+          path: ./output_artifacts/*
+
+  build_lsm:
+    name: LSM Hook 6.12.${{ matrix.sub_level }} (SUSFS=${{ matrix.enable_susfs }})
+    if: github.event.inputs.hook_mode == 'all' || github.event.inputs.hook_mode == 'lsm' || github.event_name != 'workflow_dispatch'
+    needs: matrix_prep
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sub_level: ${{ fromJson(needs.matrix_prep.outputs.sub_level_matrix) }}
+        enable_susfs: ${{ fromJson(needs.matrix_prep.outputs.susfs_matrix) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Configure Fast Git Protocol
+        run: |
+          git config --global protocol.version 2
+          git config --global http.postBuffer 524288000
+          git config --global http.version HTTP/2
+          git config --global core.compression 0
+
+      - name: Free Disk Space & Install Fast Tools
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true &
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            binutils python-is-python3 libssl-dev libelf-dev libdw-dev bison flex bc aria2 ccache zip zstd m4
+
+      - name: Cache Ccache Data
+        if: github.event.inputs.use_ccache != 'false'
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-${{ github.sha }}
+          restore-keys: |
+            ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-
+            ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-
+
+      - name: Setup Ccache Configurations & Wrappers
+        if: github.event.inputs.use_ccache != 'false'
+        run: |
+          mkdir -p "${{ env.CCACHE_DIR }}"
+          mkdir -p /dev/shm/ccache-temp
+
+          CCACHE_BIN="${{ github.workspace }}/.ccache-bin"
+          mkdir -p "$CCACHE_BIN"
+          for prog in clang clang++ ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-readelf llvm-strip; do
+            ln -sf "$(which ccache)" "$CCACHE_BIN/$prog"
+          done
+          echo "$CCACHE_BIN" >> "$GITHUB_PATH"
+
+          ccache -M 10G \
+            -o hash_dir=false \
+            -o compiler_check=content \
+            -o "sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,modules,system_headers" \
+            -o depend_mode=true \
+            -o run_second_cpp=true \
+            -o compression=true \
+            -o compression_level=1 \
+            -o keep_comments_cpp=true \
+            -o "cache_dir=${{ env.CCACHE_DIR }}" \
+            -o "base_dir=${{ github.workspace }}" \
+            -o "temporary_dir=/dev/shm/ccache-temp" \
+            -o file_clone=false \
+            -o hard_link=false \
+            -z
+
+      - name: Cache Clang & Build Toolchains
+        id: toolchain-cache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ github.workspace }}/kernel_workspace/toolchains
+          key: gki-toolchains-r536225-rust1.82.0
+
+      - name: Install Toolchains & Source
+        run: |
+          mkdir -p kernel_workspace/toolchains && cd kernel_workspace
+          
+          if [ "${{ steps.toolchain-cache.outputs.cache-hit }}" != "true" ] || [ ! -d "toolchains/clang/bin" ]; then
+            echo "⚡ Cache miss: Downloading Clang & Build Toolchains with aria2c..."
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-r536225.tar.gz" -o clang.tar.gz
+            mkdir -p toolchains/clang && tar -xzf clang.tar.gz -C toolchains/clang && rm -f clang.tar.gz
+
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/rust-1.82.0.tar.gz" -o rust.tar.gz
+            mkdir -p toolchains/rust && tar -xzf rust.tar.gz -C toolchains/rust && rm -f rust.tar.gz
+
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-tools-r536225.tar.gz" -o clang-tools.tar.gz
+            mkdir -p toolchains/clang-tools && tar -xzf clang-tools.tar.gz -C toolchains/clang-tools && rm -f clang-tools.tar.gz
+
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/build-tools.tar.gz" -o build-tools.tar.gz
+            mkdir -p toolchains/build-tools && tar -xzf build-tools.tar.gz -C toolchains/build-tools && rm -f build-tools.tar.gz
+          else
+            echo "✅ Clang Toolchain restored from Action Cache!"
+          fi
+
+          echo "Downloading GKI 6.12.${{ matrix.sub_level }} kernel source..."
+          if [ "${{ matrix.sub_level }}" = "69" ]; then
+            COMMON_URL="https://github.com/yapixel/gki-build-assets/releases/download/kernel-archive-android16-6.12-2026-03_r60/common-android16-6.12-2026-03_r60.tar.gz"
+          else
+            COMMON_URL="https://github.com/yapixel/gki-build-assets/releases/download/android16-6.12-2025-06_r58/common-android16-6.12-2025-06_r58.tar.gz"
+          fi
+          aria2c -s 16 -x 16 -k 1M "$COMMON_URL" -o common.tar.gz
+          mkdir -p common && tar -xzf common.tar.gz -C common && rm -f common.tar.gz
+          sed -i 's/ -dirty//g' common/scripts/setlocalversion
+
+          echo "$GITHUB_WORKSPACE/kernel_workspace/toolchains/clang/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/kernel_workspace/toolchains/build-tools/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/kernel_workspace/toolchains/clang-tools" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/kernel_workspace/toolchains/rust/bin" >> "$GITHUB_PATH"
+
+      - name: Clone Scripts & AnyKernel3
+        run: |
+          git clone --depth=1 --single-branch --no-tags "${{ env.SCRIPTS_REPO }}" sh
+          git clone --depth=1 --single-branch --no-tags "${{ env.ANYKERNEL_REPO }}" AnyKernel3
+          if [ "${{ matrix.enable_susfs }}" = "true" ]; then
+            git clone --depth=1 --single-branch --no-tags --branch="${{ env.SUSFS_REPO_BRANCH }}" "${{ env.SUSFS_REPO_URL }}" susfs4ksu
+          fi
+
+      - name: Setup xxKSU Source
+        working-directory: kernel_workspace/common
+        run: |
+          KSU_BRANCH="${{ github.event.inputs.ksu_branch || 'master' }}"
+          git clone --depth=1 --single-branch --no-tags --branch="$KSU_BRANCH" "https://github.com/${{ env.KSU_REPO }}" KernelSU
+          ln -sf ../KernelSU/kernel drivers/kernelsu
+          grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
+          grep -q "kernelsu" drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+
+          cp -r KernelSU/uapi KernelSU/kernel/uapi 2>/dev/null || true
+          echo 'ccflags-y += -I$(srctree)/drivers/kernelsu' >> drivers/kernelsu/Makefile
+          mkdir -p include/uapi
+          cp -f KernelSU/kernel/policy/*.h include/uapi/ 2>/dev/null || true
+          cp -f KernelSU/kernel/policy/*.h include/ 2>/dev/null || true
+          cp -f KernelSU/kernel/include/*.h include/ 2>/dev/null || true
+          cp -f KernelSU/kernel/uapi/*.h include/uapi/ 2>/dev/null || true
+
+      - name: Metadata
+        id: meta
+        run: |
+          KSU_BRANCH="${{ github.event.inputs.ksu_branch || 'master' }}"
+          K_VER=$(./sh/get_ksuver.sh "backslashxx" "KernelSU" "$KSU_BRANCH" || echo "unknown")
+
+          RAW_TOOLCHAIN_STR=$(clang --version 2>&1 | head -n1)
+          TOOLCHAIN_DISPLAY="$RAW_TOOLCHAIN_STR"
+
+          SUSFS_VER="unknown"
+          if [ -f "susfs4ksu/kernel_patches/include/linux/susfs.h" ]; then
+            SUSFS_VER=$(grep -E '#define SUSFS_VERSION' susfs4ksu/kernel_patches/include/linux/susfs.h | awk -F '"' '{print $2}')
+          fi
+
+          echo "ksu_ver=$K_VER" >> "$GITHUB_OUTPUT"
+          echo "toolchain_display=$TOOLCHAIN_DISPLAY" >> "$GITHUB_OUTPUT"
+          echo "kernel_ver=6.12.${{ matrix.sub_level }}" >> "$GITHUB_OUTPUT"
+          echo "susfs_ver=$SUSFS_VER" >> "$GITHUB_OUTPUT"
+
+          echo "======================================"
+          echo "🐧 Kernel Base: Linux 6.12.${{ matrix.sub_level }} (GKI / Popsicle)"
+          echo "🔧 KSU Branch: $KSU_BRANCH (+$K_VER)"
+          echo "🪝 Hook Mode: lsm (Hookless/BL)"
+          echo "🛡️ SUSFS: ${{ matrix.enable_susfs }} ($SUSFS_VER)"
+          echo "⚙️ Toolchain: $TOOLCHAIN_DISPLAY"
+          echo "⚡ Ccache: ${{ github.event.inputs.use_ccache != 'false' && 'Enabled' || 'Disabled' }}"
+          echo "======================================"
+
+      - name: Apply GKI Patches
+        working-directory: kernel_workspace/common
+        run: |
+          patch -p1 -l < "${{ github.workspace }}/.github/patches/gki/unicode_bypass_fix.patch" || true
+
+      - name: Apply SuSFS Patches
+        if: matrix.enable_susfs == 'true'
+        working-directory: kernel_workspace/common
+        run: |
+          echo "Applying SuSFS patches (GKI 6.12.${{ matrix.sub_level }})..."
+          cp "${{ github.workspace }}/susfs4ksu/kernel_patches/fs/susfs.c" fs/
+          cp "${{ github.workspace }}/susfs4ksu/kernel_patches/include/linux/susfs.h" include/linux/
+          cp "${{ github.workspace }}/susfs4ksu/kernel_patches/include/linux/susfs_def.h" include/linux/
+
+          if [ "${{ matrix.sub_level }}" = "69" ]; then
+            patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/51_deinlined_susfs_hooks_gki-android16-6.12.69.patch" || true
+          else
+            patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/51_deinlined_susfs_hooks_gki-android16-6.12.23.patch" || true
+          fi
+
+          cd KernelSU
+          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/0001-xxKSU-kernel-implement-susfs-v2.2.0-De-inlined.patch" || true
+
+      - name: Inject Defconfig Flags
+        uses: ./.github/actions/kernel-config
+        with:
+          defconfig_path: "kernel_workspace/common/arch/arm64/configs/gki_defconfig"
+          build_config_path: "kernel_workspace/common/build.config.gki"
+          hook_mode: "lsm"
+          enable_susfs: "${{ matrix.enable_susfs }}"
+
+      - name: Build Kernel (Production)
+        working-directory: kernel_workspace/common
+        env:
+          LLVM: 1
+          LLVM_IAS: 1
+          ARCH: arm64
+          SUBARCH: arm64
+          CROSS_COMPILE: aarch64-linux-gnu-
+          HOSTCC: clang
+          HOSTLD: ld.lld
+          CC: clang
+          LD: ld.lld
+          AR: llvm-ar
+          NM: llvm-nm
+          OBJCOPY: llvm-objcopy
+          OBJDUMP: llvm-objdump
+          READELF: llvm-readelf
+          STRIP: llvm-strip
+          SOURCE_DATE_EPOCH: 1757653061
+          KBUILD_BUILD_TIMESTAMP: "Fri Sep 12 04:57:41 UTC 2025"
+          KBUILD_BUILD_HOST: "build-host"
+          KBUILD_BUILD_USER: "kleaf"
+          CCACHE_BASEDIR: ${{ github.workspace }}
+        run: |
+          COMMON_REAL_PATH=$(pwd -P)
+          ROOT_REAL_PATH=$(dirname "$COMMON_REAL_PATH")
+          export KCFLAGS="-fdebug-prefix-map=$ROOT_REAL_PATH=. -fmacro-prefix-map=$ROOT_REAL_PATH=. -ffile-prefix-map=$ROOT_REAL_PATH=. -no-canonical-prefixes -O2 -pipe -Wno-error -fno-stack-protector -D__ANDROID_COMMON_KERNEL__"
+
+          cp ${{ github.workspace }}/_setup_env.sh ./ 2>/dev/null || true
+          chmod 777 ./*.sh 2>/dev/null || true
+          source "./_setup_env.sh" 2>/dev/null || true
+
+          make -j"$(nproc --all)" O=out gki_defconfig
+          make -j"$(nproc --all)" O=out Image
+
+      - name: Ccache Performance Stats
+        if: github.event.inputs.use_ccache != 'false'
+        run: |
+          echo "=== Ccache Performance Stats (lsm 6.12.${{ matrix.sub_level }}, SUSFS=${{ matrix.enable_susfs }}) ==="
+          ccache -s
+
+      - name: Package
+        run: |
+          IMAGE="kernel_workspace/common/out/arch/arm64/boot/Image"
+          [ -f "$IMAGE" ] || { echo "Error: Image binary missing!"; exit 1; }
+
+          cp "$IMAGE" AnyKernel3/Image
+
+          DATE=$(date +'%y%m%d')
+          KSU_BRANCH="${{ github.event.inputs.ksu_branch || 'master' }}"
+          K_VER="${{ steps.meta.outputs.ksu_ver }}"
+          SUSFS_VER="${{ steps.meta.outputs.susfs_ver }}"
+          TOOLCHAIN_DISPLAY="${{ steps.meta.outputs.toolchain_display }}"
+
+          if [ "$KSU_BRANCH" = "staging" ]; then
+            BRANCH_TAG="-staging"
+          else
+            BRANCH_TAG=""
+          fi
+          
+          if [ "${{ matrix.enable_susfs }}" = "true" ]; then
+            SUSFS_TAG="-SUSFS_${SUSFS_VER}"
+          else
+            SUSFS_TAG=""
+          fi
+
+          BASE_NAME="KSU_Popsicle_6.12.${{ matrix.sub_level }}+${K_VER}${BRANCH_TAG}-lsm${SUSFS_TAG}-${DATE}"
+          ZIP_NAME="${BASE_NAME}.zip"
+
+          echo "Packaging AnyKernel3: $ZIP_NAME"
+          ( cd AnyKernel3 && zip -r9 "../$ZIP_NAME" . -x "*.git*" )
+
+          mkdir -p ./output_artifacts
+          mv "$ZIP_NAME" ./output_artifacts/
+
+          echo "KERNEL_VER=6.12.${{ matrix.sub_level }}" > ./output_artifacts/build_metadata.env
+          echo "KSU_VER=${K_VER}" >> ./output_artifacts/build_metadata.env
+          echo "TOOLCHAIN_DISPLAY=${TOOLCHAIN_DISPLAY}" >> ./output_artifacts/build_metadata.env
+
+          if [ "$KSU_BRANCH" = "staging" ]; then
+            echo "Packaging debug symbols for staging build..."
+            VMLINUX_ZIP_NAME="vmlinux-${BASE_NAME}.zip"
+            SYSMAP_ZIP_NAME="System.map-${BASE_NAME}.zip"
+
+            if [ -f "kernel_workspace/common/out/vmlinux" ]; then
+              cp kernel_workspace/common/out/vmlinux ./vmlinux
+              zip -9 "$VMLINUX_ZIP_NAME" vmlinux
+              mv "$VMLINUX_ZIP_NAME" ./output_artifacts/
+            fi
+
+            if [ -f "kernel_workspace/common/out/System.map" ]; then
+              cp kernel_workspace/common/out/System.map ./System.map
+              zip -9 "$SYSMAP_ZIP_NAME" System.map
+              mv "$SYSMAP_ZIP_NAME" ./output_artifacts/
+            fi
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: kernel-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}
+          path: ./output_artifacts/*
+
+  release:
+    name: Publish Release
+    if: always() && github.event.inputs.create_release != 'false' && (needs.build_manual.result == 'success' || needs.build_lsm.result == 'success')
+    needs: [matrix_prep, build_manual, build_lsm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          path: ./all_artifacts
+          pattern: kernel-*
+          merge-multiple: true
+
+      - name: List Artifacts
+        run: |
+          echo "=== Collected Release Artifacts ==="
+          ls -lh ./all_artifacts
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KSU_BRANCH: ${{ github.event.inputs.ksu_branch || 'master' }}
+        run: |
+          DATE=$(date +"%Y.%m.%d")
+          MAX_REV=$(git tag -l "${DATE}-r*" | sed "s/${DATE}-r//" | sort -n | tail -n1)
+          REV=$(( ${MAX_REV:-0} + 1 ))
+          TAG="${DATE}-r${REV}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+          ZIP_FILES=$(find ./all_artifacts -name "*.zip" -type f)
+          if [ -z "$ZIP_FILES" ]; then
+            echo "Error: No zip files found for release!"
+            exit 1
+          fi
+
+          if [ -f "./all_artifacts/build_metadata.env" ]; then
+            source ./all_artifacts/build_metadata.env
+          fi
+          TOOLCHAIN_DISPLAY="${TOOLCHAIN_DISPLAY:-Clang (AOSP Toolchain)}"
+          KERNEL_VER="${KERNEL_VER:-6.12}"
+          KSU_VER="${KSU_VER:-unknown}"
+
+          PRERELEASE_FLAG=""
+          TITLE_PREFIX="Release"
+          DEBUG_NOTE=""
+          if [ "$KSU_BRANCH" = "staging" ]; then
+            PRERELEASE_FLAG="--prerelease"
+            TITLE_PREFIX="Pre-release (staging)"
+            DEBUG_NOTE="> 🛠️ **Debug Symbols**: Includes \`vmlinux\` and \`System.map\` debug packages."
+          fi
+
+          gh release create "$TAG" $ZIP_FILES \
+            $PRERELEASE_FLAG \
+            --title "Popsicle GKI 6.12 Kernel — $TITLE_PREFIX $TAG" \
+            --notes "
+          ### 🚀 Build Information
+
+          | Component | Details |
+          | :--- | :--- |
+          | **Architecture** | Android Generic Kernel Image (GKI 6.12) |
+          | **Kernel Base** | Linux $KERNEL_VER (Popsicle) |
+          | **KernelSU Branch** | \`$KSU_BRANCH\` (+$KSU_VER) |
+          | **Toolchain** | $TOOLCHAIN_DISPLAY |
+
+          ### 📦 Variant Breakdown
+          - **manual-SUSFS**: Manual Security Hooks + SuSFS (Recommended for maximum stealth)
+          - **manual**: Manual Security Hooks (Clean KSU)
+          - **lsm-SUSFS**: LSM Security Hooks (BL Hookless) + SuSFS
+          - **lsm**: LSM Security Hooks (BL Hookless, Clean KSU)
+
+          $DEBUG_NOTE
+
+          ### 🛠️ Networking & Security
+          - **TCP Congestion:** BBR v1 + FQ
+          - **Advanced Routing:** Policy Routing (Table 1066) + IPSet (64k)
+          - **Fixes & Enhancements:** ADDRTYPE Match, Google VPN (XFRM), TTL 64 Share
+          "
+

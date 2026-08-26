@@ -1,4 +1,4 @@
-name: "Inject Kernel Configs"
+﻿name: "Inject Kernel Configs"
 description: "Applies standard networking, performance, and KSU flags safely"
 
 inputs:
@@ -9,8 +9,13 @@ inputs:
     required: true
     description: "Path to build.config.gki"
   variant:
-    required: true
-    description: "KSU variant"
+    required: false
+    default: ""
+    description: "KSU variant (legacy)"
+  hook_mode:
+    required: false
+    default: ""
+    description: "KSU hook mode (manual, lsm, tinyfs)"
   enable_susfs:
     required: false
     default: "false"
@@ -123,43 +128,34 @@ runs:
         done
 
         ########################################
-        # KSU Variants
+        # KSU Hook Mode & Variants
         ########################################
-        case "${{ inputs.variant }}" in
+        MODE="${{ inputs.hook_mode }}"
+        if [ -z "$MODE" ]; then
+          case "${{ inputs.variant }}" in
+            *manual*) MODE="manual" ;;
+            *tinyfs*) MODE="tinyfs" ;;
+            *lsm*|*xxksu*) MODE="lsm" ;;
+            *) MODE="lsm" ;;
+          esac
+        fi
 
-          xxksu)
+        case "$MODE" in
+          manual)
+            set_config CONFIG_KSU y "$DEFCONFIG"
+            set_config CONFIG_KSU_EXTRAS y "$DEFCONFIG"
+            set_config CONFIG_KSU_LSM_SECURITY_HOOKS n "$DEFCONFIG"
+            set_config CONFIG_KSU_KPROBES_KSUD n "$DEFCONFIG"
+            ;;
+
+          lsm)
             set_config CONFIG_KSU y "$DEFCONFIG"
             set_config CONFIG_KSU_EXTRAS y "$DEFCONFIG"
             set_config CONFIG_KSU_HACK_ARM64_BRANCH_LINK y "$DEFCONFIG"
             set_config CONFIG_KSU_LSM_SECURITY_HOOKS y "$DEFCONFIG"
             ;;
 
-          xxksu_old)
-            set_config CONFIG_KSU y "$DEFCONFIG"
-            set_config CONFIG_KSU_EXTRAS y "$DEFCONFIG"
-            set_config CONFIG_KSU_TAMPER_SYSCALL_TABLE y "$DEFCONFIG"
-            set_config CONFIG_KSU_LSM_SECURITY_HOOKS y "$DEFCONFIG"
-            ;;
-
-          xxksu_staging)
-            set_config CONFIG_KSU y "$DEFCONFIG"
-            set_config CONFIG_KSU_EXTRAS y "$DEFCONFIG"
-            set_config CONFIG_KSU_DEBUG y "$DEFCONFIG"
-            set_config CONFIG_KSU_TAMPER_SYSCALL_TABLE y "$DEFCONFIG"
-            set_config CONFIG_KSU_LSM_SECURITY_HOOKS y "$DEFCONFIG"
-            unset_config CONFIG_MODULE_SIG_FORCE "$DEFCONFIG"
-            unset_config CONFIG_MODULE_SIG_ALL "$DEFCONFIG"
-            set_config CONFIG_MODULE_UNLOAD y "$DEFCONFIG"
-            ;;
-
-          xxksu_manual)
-            set_config CONFIG_KSU y "$DEFCONFIG"
-            set_config CONFIG_KSU_EXTRAS y "$DEFCONFIG"
-            set_config CONFIG_KSU_LSM_SECURITY_HOOKS n "$DEFCONFIG"
-            set_config CONFIG_KSU_KPROBES_KSUD n "$DEFCONFIG"
-            ;;
-            
-          xxksu_tinyfs)
+          tinyfs)
             set_config CONFIG_KSU y "$DEFCONFIG"
             set_config CONFIG_KSU_TINYFS_SUCOMPAT y "$DEFCONFIG"
             unset_config CONFIG_KSU_TAMPER_SYSCALL_TABLE "$DEFCONFIG"
@@ -169,13 +165,13 @@ runs:
             set_config CONFIG_KSU_EXTRAS y "$DEFCONFIG"
             set_config CONFIG_KSU_FEATURE_SULOG y "$DEFCONFIG"
             ;;
-    
-          *kowsu*)
-            set_config CONFIG_KSU y "$DEFCONFIG"
-            set_config CONFIG_KPROBES y "$DEFCONFIG"
-            set_config CONFIG_HAVE_KPROBES y "$DEFCONFIG"
-            ;;
 
+          *)
+            set_config CONFIG_KSU y "$DEFCONFIG"
+            set_config CONFIG_KSU_EXTRAS y "$DEFCONFIG"
+            set_config CONFIG_KSU_HACK_ARM64_BRANCH_LINK y "$DEFCONFIG"
+            set_config CONFIG_KSU_LSM_SECURITY_HOOKS y "$DEFCONFIG"
+            ;;
         esac
 
         ########################################

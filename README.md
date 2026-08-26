@@ -1,104 +1,82 @@
-# Popsicle KSU Workflow
+# Popsicle GKI 6.12 Kernel (Android 16)
 
-Automated GitHub Actions pipeline for building GKI kernels targeting the **Xiaomi Popsicle (SM8850 / Snapdragon 8 Elite)** on Android 16.
-
----
-
-## Overview
-
-This repository provides a modular, dispatcher-based workflow that builds multiple KernelSU variants from a single trigger. Each variant is fully isolated in its own workflow file, making it easy to debug, maintain, and extend independently.
+Automated GitHub Actions CI/CD pipeline for building and packaging **Popsicle GKI 6.12 Kernel** with **KernelSU (xxKSU)** and **SuSFS** for **Xiaomi Popsicle (Snapdragon 8 Elite / SM8850)** on Android 16.
 
 ---
 
-## Device
+## 📱 Device & Platform
 
 | Property | Value |
-|----------|-------|
-| Device | Xiaomi Popsicle |
-| SoC | Snapdragon 8 Elite (SM8850) |
-| Android | 16 |
-| Kernel | GKI 6.12.x |
-| Architecture | arm64 |
-| Toolchain | LLVM Clang 19 (r536225) |
+| :--- | :--- |
+| **Device** | Xiaomi Popsicle |
+| **SoC** | Qualcomm Snapdragon 8 Elite (`SM8850`) |
+| **OS** | Android 16 |
+| **Kernel Architecture** | Android Generic Kernel Image (`GKI 6.12.x`) |
+| **Toolchain** | AOSP LLVM Clang 19 (`r536225`) + Rust 1.82.0 |
 
 ---
 
-## Variants
+## 📦 Release Artifact Naming Convention
 
-| Variant | KernelSU Source | SuSFS |
-|---------|----------------|-------|
-| `kowsu+susfs` | [KOWX712/KernelSU](https://github.com/KOWX712/KernelSU) | [simonpunk/susfs4ksu · gki-android16-6.12](https://github.com/simonpunk/susfs4ksu/tree/gki-android16-6.12) |
-| `kowsu` | [KOWX712/KernelSU](https://github.com/KOWX712/KernelSU) | N/A |
-| `xxksu` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | N/A |
+Artifact packages follow a standardized, structured Scheme A naming format:
 
----
+```text
+KSU_Popsicle_6.12.<sub_level>+<KSU_VER>[-staging]-<Hook>[-SUSFS_v<SuSFS_VER>]-<YYMMDD>.zip
+```
 
-## Features
-
-- **KernelSU** root solution (variant-dependent)
-- **SuSFS** filesystem-level su hiding (KowSU + SuSFS variant only)
-- **BBR** congestion control
-- **IPSet** suite
-- **KMI bypass** for extended module compatibility
-- **Identity spoofing** — kernel version string matches stock OEM identity
-- **AnyKernel3** flashable `.zip` output
+### Examples:
+- **`KSU_Popsicle_6.12.23+12000-manual-SUSFS_v2.2.0-260826.zip`**
+  *(Manual Security Hooks + SuSFS, GKI 6.12.23, Stable KSU `master` release)*
+- **`KSU_Popsicle_6.12.69+12000-manual-260826.zip`**
+  *(Manual Security Hooks, GKI 6.12.69, Clean KSU without SuSFS)*
+- **`KSU_Popsicle_6.12.23+12055-staging-lsm-SUSFS_v2.2.0-260826.zip`**
+  *(LSM Security Hooks + SuSFS, GKI 6.12.23, KSU `staging` pre-release)*
 
 ---
 
-## Workflow Structure
-.github/workflows/
-main.yml                  ← Dispatcher: triggers builds & release
-build-kowsu-susfs.yml     ← KowSU + SuSFS build
-build-kowsu.yml           ← KowSU (vanilla) build
-build-xxksu.yml           ← xxKSU build
-release.yml               ← Publishes GitHub Release
+## 🪝 Hook Modes & Variant Breakdown
 
-### How it works
-
-1. `main.yml` is triggered manually via `workflow_dispatch`
-2. A `setup` job resolves which variants to build based on the `ksu_variant` input
-3. Each selected variant runs its dedicated build workflow in parallel
-4. On success, `release.yml` collects all artifacts and publishes a GitHub Release
+| Variant | Hook Mode | Description | Stealth / Recommendation |
+| :--- | :--- | :--- | :--- |
+| **`manual-SUSFS`** | Direct Patch (`manual`) | Inlines KSU hooks directly into kernel security functions. | 🛡️ **Highest stealth** (Recommended) |
+| **`manual`** | Direct Patch (`manual`) | Clean KernelSU integration via manual patches without SuSFS. | Standard root |
+| **`lsm-SUSFS`** | ARM64 BL Hookless (`lsm`) | Uses LSM security hooks with Branch-Link trampoline hooking. | Alternative hookless approach |
+| **`lsm`** | ARM64 BL Hookless (`lsm`) | Clean LSM security hooks without SuSFS. | Standard hookless root |
 
 ---
 
-## Usage
+## ⚡ Build Features & Enhancements
 
-Go to **Actions → Build GKI · Popsicle (SM8850) → Run workflow** and fill in:
-
-| Input | Description | Default |
-|-------|-------------|---------|
-| `ksu_variant` | Variant(s) to build: `all`, `kowsu+susfs`, `kowsu`, `xxksu` | `all` |
-| `sub_level` | Kernel sublevel, e.g. `23` for `6.12.23` | `23` |
-| `create_release` | Whether to publish a GitHub Release | `true` |
-
----
-
-## Output
-
-Each build produces an AnyKernel3 flashable zip named:
-kowsu+susfs_popsicle_6.12.<sub_level>-<date>-susfs-<susfs_version>.zip
-kowsu_popsicle_6.12.<sub_level>-<date>.zip
-xxksu_popsicle_6.12.<sub_level>-<date>.zip
+- **AOSP Clang & Rust Toolchain Caching**: Instant zero-delay toolchain restoration via GitHub Actions cache.
+- **Memory Tmpfs (`/dev/shm`)**: Intermediate compiler objects stored in RAM disk to eliminate virtual disk I/O latency.
+- **Ccache 90%+ Hit Rate**: Relocatable cache configuration for 3-minute rapid rebuilds.
+- **Networking & Routing Optimizations**:
+  - TCP Congestion: BBR v1 + FQ default
+  - Policy Routing (Table 1066) & 64k IPSet support
+  - Google VPN (XFRM) & TTL 64 share compatibility
 
 ---
 
-## Installation
+## 📥 Installation
 
-1. Boot into a custom recovery (e.g. TWRP) or use a root-capable flasher
-2. Flash the `.zip` matching your desired variant
-3. Reboot and verify root via the KernelSU app
-
-> **Back up your current boot image before flashing.**
-> This kernel is provided as-is, without warranty of any kind.
+1. Download the flashable AnyKernel3 `.zip` matching your preference from [Releases](../../releases).
+2. Flash using any root/kernel manager app:
+   - [Kernel Flasher](https://github.com/capntrips/KernelFlasher)
+   - [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher)
+   - Or flash via custom recovery (TWRP).
+3. Reboot your device.
 
 ---
 
-## References
+## 📜 Disclaimer
 
-- [KOWX712/KernelSU](https://github.com/KOWX712/KernelSU)
-- [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU)
-- [simonpunk/susfs4ksu](https://github.com/simonpunk/susfs4ksu)
-- [osm0sis/AnyKernel3](https://github.com/osm0sis/AnyKernel3)
-- [cctv18/android_gki_kernel_common](https://github.com/cctv18/android_gki_kernel_common)
-- [cctv18/oneplus_sm8650_toolchain](https://github.com/cctv18/oneplus_sm8650_toolchain)
+Flashing custom kernels and modifying system partitions involves inherent risks. Please make sure you have backups before proceeding. **Proceed at your own risk.**
+
+---
+
+## 🙏 Credits & Acknowledgements
+
+- **KernelSU**: [tiann](https://github.com/tiann/KernelSU) & [backslashxx (xxKSU)](https://github.com/backslashxx/KernelSU)
+- **SuSFS**: [simonpunk](https://gitlab.com/simonpunk/susfs4ksu)
+- **AnyKernel3**: [osm0sis](https://github.com/osm0sis/AnyKernel3)
+
