@@ -8,10 +8,10 @@ on:
         required: true
         type: choice
         options:
-          - 'all'
           - '23'
           - '69'
-        default: 'all'
+          - 'all'
+        default: '23'
       hook_mode:
         description: 'Hook Mode to Build'
         required: true
@@ -78,8 +78,8 @@ jobs:
     steps:
       - id: set-matrix
         run: |
-          SUB_INPUT="${{ github.event.inputs.sub_level }}"
-          if [ -z "$SUB_INPUT" ] || [ "$SUB_INPUT" = "all" ]; then
+          SUB_INPUT="${{ github.event.inputs.sub_level || '23' }}"
+          if [ "$SUB_INPUT" = "all" ]; then
             echo 'sub_level_matrix=["23", "69"]' >> "$GITHUB_OUTPUT"
           else
             echo "sub_level_matrix=[\"$SUB_INPUT\"]" >> "$GITHUB_OUTPUT"
