@@ -347,25 +347,17 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
 index 12a7a170..45b8be23 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
-@@ -138,3 +138,3 @@ static void reset_avc_cache(void)
- void apply_kernelsu_rules(void)
- {
--	struct policydb *db;
-+	struct policydb *db = NULL;
-@@ -200,3 +200,13 @@ out_flush:
+@@ -200,6 +200,13 @@ out_flush:
  	smp_mb();
  	reset_avc_cache();
  #endif
++
 +#ifdef CONFIG_KSU_SUSFS
-+    // Allow umount in zygote process without installing zygisk
-+    if (db) {
-+        ksu_allow(db, "zygote", "labeledfs", "filesystem", "unmount");
-+    }
-+    susfs_set_priv_app_sid();
-+    susfs_set_init_sid();
-+    susfs_set_ksu_sid();
-+    susfs_set_zygote_sid();
-+#endif // #ifdef CONFIG_KSU_SUSFS
++	susfs_set_priv_app_sid();
++	susfs_set_init_sid();
++	susfs_set_ksu_sid();
++	susfs_set_zygote_sid();
++#endif
  }
  
  #define KSU_SEPOLICY_MAX_BATCH_SIZE (8U * 1024U * 1024U)
