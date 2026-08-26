@@ -347,13 +347,12 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
 index 12a7a170..45b8be23 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
-@@ -138,5 +138,5 @@ static void reset_avc_cache(void)
+@@ -138,3 +138,3 @@ static void reset_avc_cache(void)
  void apply_kernelsu_rules(void)
  {
 -	struct policydb *db;
 +	struct policydb *db = NULL;
- 
-@@ -200,6 +200,16 @@ out_flush:
+@@ -200,3 +200,13 @@ out_flush:
  	smp_mb();
  	reset_avc_cache();
  #endif
