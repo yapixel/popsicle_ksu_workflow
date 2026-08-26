@@ -367,9 +367,9 @@ jobs:
           mkdir -p ./output_artifacts
           mv "$ZIP_NAME" ./output_artifacts/
 
-          echo "KERNEL_VER=6.12.${{ matrix.sub_level }}" > ./output_artifacts/build_metadata.env
-          echo "KSU_VER=${K_VER}" >> ./output_artifacts/build_metadata.env
-          echo "TOOLCHAIN_DISPLAY=${TOOLCHAIN_DISPLAY}" >> ./output_artifacts/build_metadata.env
+          echo "KERNEL_VER='6.12.${{ matrix.sub_level }}'" > ./output_artifacts/build_metadata.env
+          echo "KSU_VER='${K_VER}'" >> ./output_artifacts/build_metadata.env
+          echo "TOOLCHAIN_DISPLAY='${TOOLCHAIN_DISPLAY}'" >> ./output_artifacts/build_metadata.env
 
           if [ "$KSU_BRANCH" = "staging" ]; then
             echo "Packaging debug symbols for staging build..."
@@ -678,9 +678,9 @@ jobs:
           mkdir -p ./output_artifacts
           mv "$ZIP_NAME" ./output_artifacts/
 
-          echo "KERNEL_VER=6.12.${{ matrix.sub_level }}" > ./output_artifacts/build_metadata.env
-          echo "KSU_VER=${K_VER}" >> ./output_artifacts/build_metadata.env
-          echo "TOOLCHAIN_DISPLAY=${TOOLCHAIN_DISPLAY}" >> ./output_artifacts/build_metadata.env
+          echo "KERNEL_VER='6.12.${{ matrix.sub_level }}'" > ./output_artifacts/build_metadata.env
+          echo "KSU_VER='${K_VER}'" >> ./output_artifacts/build_metadata.env
+          echo "TOOLCHAIN_DISPLAY='${TOOLCHAIN_DISPLAY}'" >> ./output_artifacts/build_metadata.env
 
           if [ "$KSU_BRANCH" = "staging" ]; then
             echo "Packaging debug symbols for staging build..."
@@ -760,7 +760,7 @@ jobs:
           fi
 
           if [ -f "./all_artifacts/build_metadata.env" ]; then
-            source ./all_artifacts/build_metadata.env
+            eval "$(grep -E '^(KERNEL_VER|KSU_VER|TOOLCHAIN_DISPLAY)=' ./all_artifacts/build_metadata.env 2>/dev/null || true)"
           fi
           TOOLCHAIN_DISPLAY="${TOOLCHAIN_DISPLAY:-Clang (AOSP Toolchain)}"
           KERNEL_VER="${KERNEL_VER:-6.12}"
