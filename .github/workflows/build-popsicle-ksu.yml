@@ -114,25 +114,22 @@ jobs:
           git config --global http.version HTTP/2
           git config --global core.compression 0
 
-      - name: Free Disk Space & Install Fast Tools
+      - name: Set up build environment and tools
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true &
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            binutils python-is-python3 libssl-dev libelf-dev libdw-dev bison flex bc aria2 ccache zip zstd m4
+          sudo apt-get install -y --no-install-recommends ccache aria2 libdw-dev m4 2>/dev/null || (sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ccache aria2 libdw-dev m4)
 
-      - name: Cache Ccache Data
+      - name: Restore Ccache Data
+        id: ccache-restore
         if: github.event.inputs.use_ccache != 'false'
-        uses: actions/cache@v6.1.0
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-${{ github.sha }}
+          key: ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-${{ github.run_id }}
           restore-keys: |
             ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-
             ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-
             ccache-gki-6.12.${{ matrix.sub_level }}-${{ matrix.enable_susfs }}-
             ccache-gki-6.12.${{ matrix.sub_level }}-
-            ccache-gki-6.12-
 
       - name: Setup Ccache Configurations & Wrappers
         if: github.event.inputs.use_ccache != 'false'
@@ -163,9 +160,20 @@ jobs:
             -o hard_link=false \
             -z
 
-      - name: Cache Clang & Build Toolchains
+          echo "CCACHE_DIR=${{ env.CCACHE_DIR }}" >> $GITHUB_ENV
+          echo "USE_CCACHE=1" >> $GITHUB_ENV
+          echo "CCACHE_COMPILERCHECK=content" >> $GITHUB_ENV
+          echo "CCACHE_SLOPPINESS=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,modules,system_headers" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESSTYPE=zstd" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESSLEVEL=1" >> $GITHUB_ENV
+          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
+          echo "CCACHE_NOHASHDIR=true" >> $GITHUB_ENV
+          echo "CCACHE_TEMPDIR=/dev/shm/ccache-temp" >> $GITHUB_ENV
+
+      - name: Restore Clang & Build Toolchains
         id: toolchain-cache
-        uses: actions/cache@v6.1.0
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/kernel_workspace/toolchains
           key: gki-toolchains-r536225-rust1.82.0
@@ -175,18 +183,17 @@ jobs:
           mkdir -p kernel_workspace/toolchains && cd kernel_workspace
           
           if [ "${{ steps.toolchain-cache.outputs.cache-hit }}" != "true" ] || [ ! -d "toolchains/clang/bin" ]; then
-            echo "⚡ Cache miss: Downloading Clang & Build Toolchains with aria2c..."
-            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-r536225.tar.gz" -o clang.tar.gz
-            mkdir -p toolchains/clang && tar -xzf clang.tar.gz -C toolchains/clang && rm -f clang.tar.gz
-
-            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/rust-1.82.0.tar.gz" -o rust.tar.gz
-            mkdir -p toolchains/rust && tar -xzf rust.tar.gz -C toolchains/rust && rm -f rust.tar.gz
-
-            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-tools-r536225.tar.gz" -o clang-tools.tar.gz
-            mkdir -p toolchains/clang-tools && tar -xzf clang-tools.tar.gz -C toolchains/clang-tools && rm -f clang-tools.tar.gz
-
-            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/build-tools.tar.gz" -o build-tools.tar.gz
-            mkdir -p toolchains/build-tools && tar -xzf build-tools.tar.gz -C toolchains/build-tools && rm -f build-tools.tar.gz
+            echo "⚡ Cache miss: Concurrently Downloading Clang & Build Toolchains with aria2c..."
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-r536225.tar.gz" -o clang.tar.gz &
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/rust-1.82.0.tar.gz" -o rust.tar.gz &
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-tools-r536225.tar.gz" -o clang-tools.tar.gz &
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/build-tools.tar.gz" -o build-tools.tar.gz &
+            wait
+            mkdir -p toolchains/clang && tar -xzf clang.tar.gz -C toolchains/clang && rm -f clang.tar.gz &
+            mkdir -p toolchains/rust && tar -xzf rust.tar.gz -C toolchains/rust && rm -f rust.tar.gz &
+            mkdir -p toolchains/clang-tools && tar -xzf clang-tools.tar.gz -C toolchains/clang-tools && rm -f clang-tools.tar.gz &
+            mkdir -p toolchains/build-tools && tar -xzf build-tools.tar.gz -C toolchains/build-tools && rm -f build-tools.tar.gz &
+            wait
           else
             echo "✅ Clang Toolchain restored from Action Cache!"
           fi
@@ -208,11 +215,12 @@ jobs:
 
       - name: Clone Scripts & AnyKernel3
         run: |
-          git clone --depth=1 --single-branch --no-tags "${{ env.SCRIPTS_REPO }}" sh
-          git clone --depth=1 --single-branch --no-tags "${{ env.ANYKERNEL_REPO }}" AnyKernel3
+          git clone --depth=1 --single-branch --no-tags "${{ env.SCRIPTS_REPO }}" sh &
+          git clone --depth=1 --single-branch --no-tags "${{ env.ANYKERNEL_REPO }}" AnyKernel3 &
           if [ "${{ matrix.enable_susfs }}" = "true" ]; then
-            git clone --depth=1 --single-branch --no-tags --branch="${{ env.SUSFS_REPO_BRANCH }}" "${{ env.SUSFS_REPO_URL }}" susfs4ksu
+            git clone --depth=1 --single-branch --no-tags --branch="${{ env.SUSFS_REPO_BRANCH }}" "${{ env.SUSFS_REPO_URL }}" susfs4ksu &
           fi
+          wait
 
       - name: Setup xxKSU Source
         working-directory: kernel_workspace/common
@@ -405,6 +413,20 @@ jobs:
           name: kernel-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}
           path: ./output_artifacts/*
 
+      - name: Save Ccache Data
+        if: always() && github.event.inputs.use_ccache != 'false'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
+      - name: Save Clang & Build Toolchains
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/kernel_workspace/toolchains
+          key: gki-toolchains-r536225-rust1.82.0
+
   build_lsm:
     name: LSM Hook 6.12.${{ matrix.sub_level }} (SUSFS=${{ matrix.enable_susfs }})
     if: github.event.inputs.hook_mode == 'all' || github.event.inputs.hook_mode == 'lsm' || github.event_name != 'workflow_dispatch'
@@ -427,25 +449,22 @@ jobs:
           git config --global http.version HTTP/2
           git config --global core.compression 0
 
-      - name: Free Disk Space & Install Fast Tools
+      - name: Set up build environment and tools
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true &
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            binutils python-is-python3 libssl-dev libelf-dev libdw-dev bison flex bc aria2 ccache zip zstd m4
+          sudo apt-get install -y --no-install-recommends ccache aria2 libdw-dev m4 2>/dev/null || (sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ccache aria2 libdw-dev m4)
 
-      - name: Cache Ccache Data
+      - name: Restore Ccache Data
+        id: ccache-restore
         if: github.event.inputs.use_ccache != 'false'
-        uses: actions/cache@v6.1.0
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-${{ github.sha }}
+          key: ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-${{ github.run_id }}
           restore-keys: |
             ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-
             ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-
             ccache-gki-6.12.${{ matrix.sub_level }}-${{ matrix.enable_susfs }}-
             ccache-gki-6.12.${{ matrix.sub_level }}-
-            ccache-gki-6.12-
 
       - name: Setup Ccache Configurations & Wrappers
         if: github.event.inputs.use_ccache != 'false'
@@ -476,9 +495,20 @@ jobs:
             -o hard_link=false \
             -z
 
-      - name: Cache Clang & Build Toolchains
+          echo "CCACHE_DIR=${{ env.CCACHE_DIR }}" >> $GITHUB_ENV
+          echo "USE_CCACHE=1" >> $GITHUB_ENV
+          echo "CCACHE_COMPILERCHECK=content" >> $GITHUB_ENV
+          echo "CCACHE_SLOPPINESS=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,modules,system_headers" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESSTYPE=zstd" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESSLEVEL=1" >> $GITHUB_ENV
+          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
+          echo "CCACHE_NOHASHDIR=true" >> $GITHUB_ENV
+          echo "CCACHE_TEMPDIR=/dev/shm/ccache-temp" >> $GITHUB_ENV
+
+      - name: Restore Clang & Build Toolchains
         id: toolchain-cache
-        uses: actions/cache@v6.1.0
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/kernel_workspace/toolchains
           key: gki-toolchains-r536225-rust1.82.0
@@ -488,18 +518,17 @@ jobs:
           mkdir -p kernel_workspace/toolchains && cd kernel_workspace
           
           if [ "${{ steps.toolchain-cache.outputs.cache-hit }}" != "true" ] || [ ! -d "toolchains/clang/bin" ]; then
-            echo "⚡ Cache miss: Downloading Clang & Build Toolchains with aria2c..."
-            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-r536225.tar.gz" -o clang.tar.gz
-            mkdir -p toolchains/clang && tar -xzf clang.tar.gz -C toolchains/clang && rm -f clang.tar.gz
-
-            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/rust-1.82.0.tar.gz" -o rust.tar.gz
-            mkdir -p toolchains/rust && tar -xzf rust.tar.gz -C toolchains/rust && rm -f rust.tar.gz
-
-            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-tools-r536225.tar.gz" -o clang-tools.tar.gz
-            mkdir -p toolchains/clang-tools && tar -xzf clang-tools.tar.gz -C toolchains/clang-tools && rm -f clang-tools.tar.gz
-
-            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/build-tools.tar.gz" -o build-tools.tar.gz
-            mkdir -p toolchains/build-tools && tar -xzf build-tools.tar.gz -C toolchains/build-tools && rm -f build-tools.tar.gz
+            echo "⚡ Cache miss: Concurrently Downloading Clang & Build Toolchains with aria2c..."
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-r536225.tar.gz" -o clang.tar.gz &
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/rust-1.82.0.tar.gz" -o rust.tar.gz &
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/clang-tools-r536225.tar.gz" -o clang-tools.tar.gz &
+            aria2c -s 16 -x 16 -k 1M "https://github.com/yapixel/gki-build-assets/releases/download/r536225/build-tools.tar.gz" -o build-tools.tar.gz &
+            wait
+            mkdir -p toolchains/clang && tar -xzf clang.tar.gz -C toolchains/clang && rm -f clang.tar.gz &
+            mkdir -p toolchains/rust && tar -xzf rust.tar.gz -C toolchains/rust && rm -f rust.tar.gz &
+            mkdir -p toolchains/clang-tools && tar -xzf clang-tools.tar.gz -C toolchains/clang-tools && rm -f clang-tools.tar.gz &
+            mkdir -p toolchains/build-tools && tar -xzf build-tools.tar.gz -C toolchains/build-tools && rm -f build-tools.tar.gz &
+            wait
           else
             echo "✅ Clang Toolchain restored from Action Cache!"
           fi
@@ -521,11 +550,12 @@ jobs:
 
       - name: Clone Scripts & AnyKernel3
         run: |
-          git clone --depth=1 --single-branch --no-tags "${{ env.SCRIPTS_REPO }}" sh
-          git clone --depth=1 --single-branch --no-tags "${{ env.ANYKERNEL_REPO }}" AnyKernel3
+          git clone --depth=1 --single-branch --no-tags "${{ env.SCRIPTS_REPO }}" sh &
+          git clone --depth=1 --single-branch --no-tags "${{ env.ANYKERNEL_REPO }}" AnyKernel3 &
           if [ "${{ matrix.enable_susfs }}" = "true" ]; then
-            git clone --depth=1 --single-branch --no-tags --branch="${{ env.SUSFS_REPO_BRANCH }}" "${{ env.SUSFS_REPO_URL }}" susfs4ksu
+            git clone --depth=1 --single-branch --no-tags --branch="${{ env.SUSFS_REPO_BRANCH }}" "${{ env.SUSFS_REPO_URL }}" susfs4ksu &
           fi
+          wait
 
       - name: Setup xxKSU Source
         working-directory: kernel_workspace/common
@@ -716,6 +746,20 @@ jobs:
           name: kernel-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}
           path: ./output_artifacts/*
 
+      - name: Save Ccache Data
+        if: always() && github.event.inputs.use_ccache != 'false'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
+      - name: Save Clang & Build Toolchains
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/kernel_workspace/toolchains
+          key: gki-toolchains-r536225-rust1.82.0
+
   release:
     name: Publish Release
     if: always() && github.event.inputs.create_release != 'false' && (needs.build_manual.result == 'success' || needs.build_lsm.result == 'success')
@@ -745,13 +789,7 @@ jobs:
           KSU_BRANCH: ${{ github.event.inputs.ksu_branch || 'master' }}
         run: |
           DATE=$(date +"%y%m%d")
-          if ! gh release view "$DATE" >/dev/null 2>&1; then
-            TAG="$DATE"
-          else
-            MAX_REV=$(gh release list --limit 50 | awk '{print $1}' | grep -E "^${DATE}-r[0-9]+" | sed "s/${DATE}-r//" | sort -n | tail -n1)
-            REV=$(( ${MAX_REV:-0} + 1 ))
-            TAG="${DATE}-r${REV}"
-          fi
+          TAG="$DATE"
 
           ZIP_FILES=$(find ./all_artifacts -name "*.zip" -type f)
           if [ -z "$ZIP_FILES" ]; then
@@ -775,36 +813,54 @@ jobs:
             DEBUG_NOTE="> 🛠️ **Debug Symbols**: Includes \`vmlinux\` and \`System.map\` debug symbol archives for kernel debugging."
           fi
 
-          gh release create "$TAG" $ZIP_FILES \
-            --target "${{ github.sha }}" \
-            $PRERELEASE_FLAG \
-            --title "Xiaomi Popsicle (SM8850) GKI 6.12 Kernel — $TITLE_PREFIX $TAG (KSU +$KSU_VER)" \
-            --notes "
-          ## 📱 Xiaomi Popsicle (SM8850) GKI 6.12 Kernel — $TITLE_PREFIX $TAG
+          RELEASE_TITLE="Xiaomi Popsicle (SM8850) GKI 6.12 Kernel — $TITLE_PREFIX $TAG (KSU +$KSU_VER)"
+          BUILD_TIME="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
-          ### 🚀 Build Information
-          | Component | Details |
-          | :--- | :--- |
-          | **Target Device** | Xiaomi Popsicle (Snapdragon 8 Elite / \`SM8850\`) |
-          | **Architecture** | Android Generic Kernel Image (GKI 6.12) |
-          | **Kernel Base** | Linux $KERNEL_VER (Popsicle) |
-          | **KernelSU Branch** | \`$KSU_BRANCH\` (+$KSU_VER) |
-          | **Compiler** | $TOOLCHAIN_DISPLAY |
-          | **Build Date** | $DATE |
+          {
+            echo "## 📱 Xiaomi Popsicle (SM8850) GKI 6.12 Kernel — $TITLE_PREFIX $TAG"
+            echo ""
+            echo "### 🚀 Build Information"
+            echo "| Component | Details |"
+            echo "| :--- | :--- |"
+            echo "| **Target Device** | Xiaomi Popsicle (Snapdragon 8 Elite / \`SM8850\`) |"
+            echo "| **Architecture** | Android Generic Kernel Image (GKI 6.12) |"
+            echo "| **Kernel Base** | Linux $KERNEL_VER (Popsicle) |"
+            echo "| **KernelSU Branch** | \`$KSU_BRANCH\` (+$KSU_VER) |"
+            echo "| **Compiler** | $TOOLCHAIN_DISPLAY |"
+            echo "| **Build Date** | $BUILD_TIME |"
+            echo ""
+            echo "### 📦 Variant Breakdown"
+            echo "| Package | Security Hook Mode | SuSFS Status | Stealth Level |"
+            echo "| :--- | :--- | :--- | :--- |"
+            echo "| \`*-manual-SUSFS-*.zip\` | Manual Security Hooks (Inline) | ✅ Enabled | 🛡️ **Maximum Stealth** (Recommended) |"
+            echo "| \`*-manual-*.zip\` | Manual Security Hooks (Inline) | ❌ Clean KSU | Standard Root |"
+            echo "| \`*-lsm-SUSFS-*.zip\` | LSM Security Hooks (BL Hookless) | ✅ Enabled | Hookless Stealth |"
+            echo "| \`*-lsm-*.zip\` | LSM Security Hooks (BL Hookless) | ❌ Clean KSU | Standard Hookless Root |"
+            echo ""
+            if [ -n "$DEBUG_NOTE" ]; then
+              echo "$DEBUG_NOTE"
+              echo ""
+            fi
+            echo "### ⚡ Networking & Performance Tweaks"
+            echo "- **TCP Congestion Control:** BBR v1 + FQ default"
+            echo "- **Advanced Policy Routing:** Table 1066 support & 64k IPSet for seamless split-tunneling"
+            echo "- **Fixes & Compatibility:** ADDRTYPE match, Google VPN (XFRM), TTL 64 share"
+          } > release_body.md
 
-          ### 📦 Variant Breakdown
-          | Package | Security Hook Mode | SuSFS Status | Stealth Level |
-          | :--- | :--- | :--- | :--- |
-          | \`*-manual-SUSFS-*.zip\` | Manual Security Hooks (Inline) | ✅ Enabled | 🛡️ **Maximum Stealth** (Recommended) |
-          | \`*-manual-*.zip\` | Manual Security Hooks (Inline) | ❌ Clean KSU | Standard Root |
-          | \`*-lsm-SUSFS-*.zip\` | LSM Security Hooks (BL Hookless) | ✅ Enabled | Hookless Stealth |
-          | \`*-lsm-*.zip\` | LSM Security Hooks (BL Hookless) | ❌ Clean KSU | Standard Hookless Root |
-
-          $DEBUG_NOTE
-
-          ### ⚡ Networking & Performance Tweaks
-          - **TCP Congestion Control:** BBR v1 + FQ default
-          - **Advanced Policy Routing:** Table 1066 support & 64k IPSet for seamless split-tunneling
-          - **Fixes & Compatibility:** ADDRTYPE match, Google VPN (XFRM), TTL 64 share
-          "
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "⚡ Release $TAG already exists for today. Overwriting assets and updating release..."
+            gh release upload "$TAG" $ZIP_FILES --clobber
+            gh release edit "$TAG" \
+              --target "${{ github.sha }}" \
+              $PRERELEASE_FLAG \
+              --title "$RELEASE_TITLE" \
+              --notes-file release_body.md
+          else
+            echo "🚀 Creating new release for $TAG..."
+            gh release create "$TAG" $ZIP_FILES \
+              --target "${{ github.sha }}" \
+              $PRERELEASE_FLAG \
+              --title "$RELEASE_TITLE" \
+              --notes-file release_body.md
+          fi
 
