@@ -767,33 +767,38 @@ jobs:
           if [ "$KSU_BRANCH" = "staging" ]; then
             PRERELEASE_FLAG="--prerelease"
             TITLE_PREFIX="Pre-release (staging)"
-            DEBUG_NOTE="> 🛠️ **Debug Symbols**: Includes \`vmlinux\` and \`System.map\` debug packages."
+            DEBUG_NOTE="> 🛠️ **Debug Symbols**: Includes \`vmlinux\` and \`System.map\` debug symbol archives for kernel debugging."
           fi
 
           gh release create "$TAG" $ZIP_FILES \
             $PRERELEASE_FLAG \
-            --title "Popsicle GKI 6.12 Kernel — $TITLE_PREFIX $TAG" \
+            --title "Xiaomi Popsicle (SM8850) GKI 6.12 Kernel — $TITLE_PREFIX $TAG (KSU +$KSU_VER)" \
             --notes "
-          ### 🚀 Build Information
+          ## 📱 Xiaomi Popsicle (SM8850) GKI 6.12 Kernel — $TITLE_PREFIX $TAG
 
+          ### 🚀 Build Information
           | Component | Details |
           | :--- | :--- |
+          | **Target Device** | Xiaomi Popsicle (Snapdragon 8 Elite / \`SM8850\`) |
           | **Architecture** | Android Generic Kernel Image (GKI 6.12) |
           | **Kernel Base** | Linux $KERNEL_VER (Popsicle) |
           | **KernelSU Branch** | \`$KSU_BRANCH\` (+$KSU_VER) |
-          | **Toolchain** | $TOOLCHAIN_DISPLAY |
+          | **Compiler** | $TOOLCHAIN_DISPLAY |
+          | **Build Date** | $DATE |
 
           ### 📦 Variant Breakdown
-          - **manual-SUSFS**: Manual Security Hooks + SuSFS (Recommended for maximum stealth)
-          - **manual**: Manual Security Hooks (Clean KSU)
-          - **lsm-SUSFS**: LSM Security Hooks (BL Hookless) + SuSFS
-          - **lsm**: LSM Security Hooks (BL Hookless, Clean KSU)
+          | Package | Security Hook Mode | SuSFS Status | Stealth Level |
+          | :--- | :--- | :--- | :--- |
+          | \`*-manual-SUSFS-*.zip\` | Manual Security Hooks (Inline) | ✅ Enabled | 🛡️ **Maximum Stealth** (Recommended) |
+          | \`*-manual-*.zip\` | Manual Security Hooks (Inline) | ❌ Clean KSU | Standard Root |
+          | \`*-lsm-SUSFS-*.zip\` | LSM Security Hooks (BL Hookless) | ✅ Enabled | Hookless Stealth |
+          | \`*-lsm-*.zip\` | LSM Security Hooks (BL Hookless) | ❌ Clean KSU | Standard Hookless Root |
 
           $DEBUG_NOTE
 
-          ### 🛠️ Networking & Security
-          - **TCP Congestion:** BBR v1 + FQ
-          - **Advanced Routing:** Policy Routing (Table 1066) + IPSet (64k)
-          - **Fixes & Enhancements:** ADDRTYPE Match, Google VPN (XFRM), TTL 64 Share
+          ### ⚡ Networking & Performance Tweaks
+          - **TCP Congestion Control:** BBR v1 + FQ default
+          - **Advanced Policy Routing:** Table 1066 support & 64k IPSet for seamless split-tunneling
+          - **Fixes & Compatibility:** ADDRTYPE match, Google VPN (XFRM), TTL 64 share
           "
 
