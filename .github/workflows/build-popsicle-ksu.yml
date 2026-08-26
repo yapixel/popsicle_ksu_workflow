@@ -124,12 +124,12 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-${{ github.run_id }}
+          key: ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ github.event.inputs.ksu_branch || 'master' }}-${{ github.run_id }}
           restore-keys: |
-            ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-
-            ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ matrix.enable_susfs }}-
-            ccache-gki-6.12.${{ matrix.sub_level }}-${{ matrix.enable_susfs }}-
+            ccache-gki-6.12.${{ matrix.sub_level }}-manual-${{ github.event.inputs.ksu_branch || 'master' }}-
+            ccache-gki-6.12.${{ matrix.sub_level }}-manual-
             ccache-gki-6.12.${{ matrix.sub_level }}-
+            ccache-gki-6.12-
 
       - name: Setup Ccache Configurations & Wrappers
         if: github.event.inputs.use_ccache != 'false'
@@ -463,12 +463,12 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-${{ github.run_id }}
+          key: ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ github.event.inputs.ksu_branch || 'master' }}-${{ github.run_id }}
           restore-keys: |
-            ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-${{ github.event.inputs.ksu_branch || 'master' }}-
-            ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ matrix.enable_susfs }}-
-            ccache-gki-6.12.${{ matrix.sub_level }}-${{ matrix.enable_susfs }}-
+            ccache-gki-6.12.${{ matrix.sub_level }}-lsm-${{ github.event.inputs.ksu_branch || 'master' }}-
+            ccache-gki-6.12.${{ matrix.sub_level }}-lsm-
             ccache-gki-6.12.${{ matrix.sub_level }}-
+            ccache-gki-6.12-
 
       - name: Setup Ccache Configurations & Wrappers
         if: github.event.inputs.use_ccache != 'false'
