@@ -261,7 +261,7 @@ jobs:
         run: |
           patch -p1 -l < "${{ github.workspace }}/.github/patches/gki/unicode_bypass_fix.patch" || true
           patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/manual-security-hooks-v2.0.patch"
-          patch -p1 -l < "${{ github.workspace }}/.github/patches/xxksu/scope-min-manual-hooks-v2.2.patch"
+          patch -p1 -l < "${{ github.workspace }}/.github/patches/xxksu/scope-min-manual-hooks-v2.3.patch"
 
       - name: Apply SuSFS Patches
         if: matrix.enable_susfs == 'true'
