@@ -829,47 +829,33 @@ jobs:
           KSU_VER="${KSU_VER:-unknown}"
 
           PRERELEASE_FLAG=""
-          TITLE_PREFIX="Release"
-          DEBUG_NOTE=""
           if [ "$KSU_BRANCH" = "staging" ]; then
             PRERELEASE_FLAG="--prerelease"
-            TITLE_PREFIX="Pre-release (staging)"
+            RELEASE_TITLE="Xiaomi Popsicle 6.12 (Staging) — $TAG"
             DEBUG_NOTE="> 🛠️ **Debug Symbols**: Includes \`vmlinux\` and \`System.map\` debug symbol archives for kernel debugging."
+          else
+            RELEASE_TITLE="Xiaomi Popsicle 6.12 — $TAG"
+            DEBUG_NOTE=""
           fi
-
-          RELEASE_TITLE="Xiaomi Popsicle (SM8850) GKI 6.12 Kernel — $TITLE_PREFIX $TAG (KSU +$KSU_VER / SuSFS $SUSFS_VER)"
           BUILD_TIME="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
           {
-            echo "## 📱 Xiaomi Popsicle (SM8850) GKI 6.12 Kernel — $TITLE_PREFIX $TAG"
+            echo "## 📱 $RELEASE_TITLE"
             echo ""
             echo "### 🚀 Build Information"
             echo "| Component | Details |"
             echo "| :--- | :--- |"
-            echo "| **Target Device** | Xiaomi Popsicle (Snapdragon 8 Elite / \`SM8850\`) |"
-            echo "| **Architecture** | Android Generic Kernel Image (GKI 6.12) |"
+            echo "| **Target Device** | Xiaomi Popsicle (\`SM8850\`) |"
+            echo "| **Architecture** | Android GKI 6.12 |"
             echo "| **Kernel Base** | Linux $KERNEL_VER (Popsicle) |"
-            echo "| **KernelSU Branch** | \`$KSU_BRANCH\` (+$KSU_VER) |"
-            echo "| **SuSFS Version** | \`$SUSFS_VER\` |"
+            echo "| **KernelSU** | \`$KSU_BRANCH\` (+$KSU_VER) |"
+            echo "| **SuSFS** | \`$SUSFS_VER\` |"
             echo "| **Compiler** | $TOOLCHAIN_DISPLAY |"
             echo "| **Build Date** | $BUILD_TIME |"
-            echo ""
-            echo "### 📦 Variant Breakdown"
-            echo "| Package | Security Hook Mode | SuSFS Status | Stealth Level |"
-            echo "| :--- | :--- | :--- | :--- |"
-            echo "| \`*-manual-SUSFS_${SUSFS_VER}-*.zip\` | Manual Security Hooks (Inline) | ✅ Enabled (\`$SUSFS_VER\`) | 🛡️ **Maximum Stealth** (Recommended) |"
-            echo "| \`*-manual-*.zip\` | Manual Security Hooks (Inline) | ❌ Clean KSU | Standard Root |"
-            echo "| \`*-lsm-SUSFS_${SUSFS_VER}-*.zip\` | LSM Security Hooks (BL Hookless) | ✅ Enabled (\`$SUSFS_VER\`) | Hookless Stealth |"
-            echo "| \`*-lsm-*.zip\` | LSM Security Hooks (BL Hookless) | ❌ Clean KSU | Standard Hookless Root |"
-            echo ""
             if [ -n "$DEBUG_NOTE" ]; then
-              echo "$DEBUG_NOTE"
               echo ""
+              echo "$DEBUG_NOTE"
             fi
-            echo "### ⚡ Networking & Performance Tweaks"
-            echo "- **TCP Congestion Control:** BBR v1 + FQ default"
-            echo "- **Advanced Policy Routing:** Table 1066 support & 64k IPSet for seamless split-tunneling"
-            echo "- **Fixes & Compatibility:** ADDRTYPE match, Google VPN (XFRM), TTL 64 share"
           } > release_body.md
 
           if gh release view "$TAG" >/dev/null 2>&1; then
