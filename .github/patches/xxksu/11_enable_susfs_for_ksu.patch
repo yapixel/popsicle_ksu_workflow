@@ -1,6 +1,7 @@
-From: midori01 <lv@lvlv.lv>
-Date: Thu, 27 Aug 2026 06:50:24 +0900
-Subject: [PATCH] Enable SUSFS for MidoriSU-XX
+From 37eee69d83424bba4b2ae3d3dd38cbbbb1ef9824 Mon Sep 17 00:00:00 2001
+From: yapixel <yapixel@users.noreply.github.com>
+Date: Thu, 27 Aug 2026 14:43:32 +0000
+Subject: [PATCH] Enable SUSFS for backslashxx KernelSU
 
 ---
  kernel/Kconfig                        |  98 +++++++++++++++
@@ -16,7 +17,7 @@ Subject: [PATCH] Enable SUSFS for MidoriSU-XX
  10 files changed, 545 insertions(+), 37 deletions(-)
 
 diff --git a/kernel/Kconfig b/kernel/Kconfig
-index 18b97b7f5..77df2e4bb 100644
+index 18b97b7..36e28e2 100644
 --- a/kernel/Kconfig
 +++ b/kernel/Kconfig
 @@ -128,4 +128,102 @@ config KSU_HEURISTIC_IN_TREE_BUILD
@@ -123,7 +124,7 @@ index 18b97b7f5..77df2e4bb 100644
 +
  endmenu
 diff --git a/kernel/downstream/ksu_hostsredirect.h b/kernel/downstream/ksu_hostsredirect.h
-index 07e7ca99c..c5a5ef8b3 100644
+index 07e7ca9..c5a5ef8 100644
 --- a/kernel/downstream/ksu_hostsredirect.h
 +++ b/kernel/downstream/ksu_hostsredirect.h
 @@ -14,7 +14,11 @@
@@ -139,7 +140,7 @@ index 07e7ca99c..c5a5ef8b3 100644
  static __always_inline void ksu_hosts_file_redirect(const char __user *filename, int flags, int *fd_ptr)
  {
 diff --git a/kernel/feature/kernel_umount.c b/kernel/feature/kernel_umount.c
-index a931624b8..fe988bfc7 100644
+index a931624..fe988bf 100644
 --- a/kernel/feature/kernel_umount.c
 +++ b/kernel/feature/kernel_umount.c
 @@ -1,5 +1,14 @@
@@ -243,7 +244,7 @@ index a931624b8..fe988bfc7 100644
  	pr_info("handle umount for uid: %d, pid: %d\n", new_uid, current->pid);
  
 diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
-index 925798048..c0cdcad33 100644
+index 9257980..c0cdcad 100644
 --- a/kernel/hook/setuid_hook.c
 +++ b/kernel/hook/setuid_hook.c
 @@ -1,4 +1,137 @@
@@ -427,7 +428,7 @@ index 925798048..c0cdcad33 100644
 +#endif
  }
 diff --git a/kernel/ksu.c b/kernel/ksu.c
-index ff786d174..7441a2200 100644
+index ff786d1..7441a22 100644
 --- a/kernel/ksu.c
 +++ b/kernel/ksu.c
 @@ -152,6 +152,10 @@
@@ -453,7 +454,7 @@ index ff786d174..7441a2200 100644
  
  	ksu_file_wrapper_init();
 diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
-index 12a7a1709..9f7743f33 100644
+index 12a7a17..9f7743f 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
 @@ -200,6 +200,13 @@ out_flush:
@@ -471,7 +472,7 @@ index 12a7a1709..9f7743f33 100644
  
  #define KSU_SEPOLICY_MAX_BATCH_SIZE (8U * 1024U * 1024U)
 diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
-index 04e5ffe0c..e3bd796ce 100644
+index 04e5ffe..e3bd796 100644
 --- a/kernel/selinux/selinux.c
 +++ b/kernel/selinux/selinux.c
 @@ -227,3 +227,106 @@ void escape_to_root_for_adb_root(void)
@@ -582,7 +583,7 @@ index 04e5ffe0c..e3bd796ce 100644
 +}
 +#endif // #ifdef CONFIG_KSU_SUSFS
 diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
-index cbeac553d..42bdf7398 100644
+index cbeac55..42bdf73 100644
 --- a/kernel/selinux/selinux.h
 +++ b/kernel/selinux/selinux.h
 @@ -13,6 +13,20 @@
@@ -607,7 +608,7 @@ index cbeac553d..42bdf7398 100644
  
  void setenforce(bool);
 diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
-index f4dcc40d5..e35085bbc 100644
+index b1cf6b5..05e5fa9 100644
 --- a/kernel/supercall/dispatch.c
 +++ b/kernel/supercall/dispatch.c
 @@ -1,3 +1,13 @@
@@ -660,7 +661,7 @@ index f4dcc40d5..e35085bbc 100644
  #if 0 // TODO: revisit this sometime
  		case KSU_MARK_MARK: { break; }
 diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
-index 8c207930d..f8a4276a3 100644
+index 8c20793..f8a4276 100644
 --- a/kernel/supercall/supercall.c
 +++ b/kernel/supercall/supercall.c
 @@ -1,3 +1,9 @@
