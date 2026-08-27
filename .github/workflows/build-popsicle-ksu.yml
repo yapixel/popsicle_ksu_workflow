@@ -1,5 +1,4 @@
-name: Build Popsicle GKI + KSU (Matrix)
-
+name: Build Popsicle GKI + KSU
 on:
   workflow_dispatch:
     inputs:
