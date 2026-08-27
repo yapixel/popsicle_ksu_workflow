@@ -1,4 +1,4 @@
-﻿name: "Inject Kernel Configs"
+name: "Inject Kernel Configs"
 description: "Applies standard networking, performance, and KSU flags safely"
 
 inputs:
@@ -186,8 +186,6 @@ runs:
             CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT \
             CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT \
             CONFIG_KSU_SUSFS_SUS_KSTAT \
-            CONFIG_KSU_SUSFS_TRY_UMOUNT \
-            CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT \
             CONFIG_KSU_SUSFS_SPOOF_UNAME \
             CONFIG_KSU_SUSFS_ENABLE_LOG \
             CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
@@ -197,6 +195,8 @@ runs:
           do
             set_config "$opt" y "$DEFCONFIG"
           done
+          set_config CONFIG_KSU_SUSFS_TRY_UMOUNT n "$DEFCONFIG"
+          set_config CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT n "$DEFCONFIG"
         fi
 
         ########################################
