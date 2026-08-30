@@ -632,7 +632,9 @@ jobs:
           fi
 
           cd KernelSU
-          patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/11_enable_susfs_for_ksu.patch" || true
+          #patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/11_enable_susfs_for_ksu.patch" || true
+          patch -p1 -l < "${{ github.workspace }}/.github/patches/xxksu/scope-min-manual-hooks-v2.3.patch"
+
 
       - name: Inject Defconfig Flags
         uses: ./.github/actions/kernel-config
