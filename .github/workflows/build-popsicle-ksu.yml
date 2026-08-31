@@ -854,7 +854,7 @@ jobs:
             echo "| **Target Device** | Xiaomi Popsicle (\`SM8850\`) |"
             echo "| **Architecture** | Android GKI 6.12 |"
             echo "| **Kernel Base** | Linux $KERNEL_VER (Popsicle) |"
-            echo "| **KernelSU** | \`$KSU_BRANCH\` (+$KSU_VER) |"
+            echo "| **KernelSU** | \`$KSU_BRANCH\` (\`$KSU_VER\`) |"
             echo "| **SuSFS** | \`$SUSFS_VER\` |"
             echo "| **Compiler** | $TOOLCHAIN_DISPLAY |"
             echo "| **Build Date** | $BUILD_TIME |"
