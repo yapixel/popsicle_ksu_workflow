@@ -284,15 +284,17 @@ jobs:
           cp "${{ github.workspace }}/susfs4ksu/kernel_patches/include/linux/susfs_def.h" include/linux/
 
           if [ "${{ matrix.sub_level }}" = "69" ]; then
-            patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/51_deinlined_susfs_hooks_gki-android16-6.12.69.patch" || true
+            SUSFS_PATCH="${{ github.workspace }}/.github/patches/xxksu/50_add_susfs_in_gki-android16-6.12.69.patch"
           else
-            patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/51_deinlined_susfs_hooks_gki-android16-6.12.23.patch" || true
+            SUSFS_PATCH="${{ github.workspace }}/.github/patches/xxksu/50_add_susfs_in_gki-android16-6.12.23.patch"
           fi
-          
+          bash "${{ github.workspace }}/.github/scripts/susfs_deinlined.sh" "$SUSFS_PATCH"
+          patch -p1 < deinlined.patch
+          patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/55_try_umount_for_susfs.patch"
+
           cd KernelSU
-          #patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/11_enable_susfs_for_ksu.patch" || true
           patch -p1 -l --fuzz=3 < <(curl -fsSL "https://github.com/midori01/KernelSU/commit/xx.patch")
-          
+
       - name: Inject Defconfig Flags
         uses: ./.github/actions/kernel-config
         with:
@@ -626,16 +628,16 @@ jobs:
           cp "${{ github.workspace }}/susfs4ksu/kernel_patches/include/linux/susfs_def.h" include/linux/
 
           if [ "${{ matrix.sub_level }}" = "69" ]; then
-            patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/51_deinlined_susfs_hooks_gki-android16-6.12.69.patch" || true
+            SUSFS_PATCH="${{ github.workspace }}/.github/patches/xxksu/50_add_susfs_in_gki-android16-6.12.69.patch"
           else
-            patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/51_deinlined_susfs_hooks_gki-android16-6.12.23.patch" || true
+            SUSFS_PATCH="${{ github.workspace }}/.github/patches/xxksu/50_add_susfs_in_gki-android16-6.12.23.patch"
           fi
+          bash "${{ github.workspace }}/.github/scripts/susfs_deinlined.sh" "$SUSFS_PATCH"
+          patch -p1 < deinlined.patch
+          patch -p1 < "${{ github.workspace }}/.github/patches/xxksu/55_try_umount_for_susfs.patch"
 
           cd KernelSU
-          #patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/11_enable_susfs_for_ksu.patch" || true
           patch -p1 -l --fuzz=3 < <(curl -fsSL "https://github.com/midori01/KernelSU/commit/xx.patch")
-          
-
 
       - name: Inject Defconfig Flags
         uses: ./.github/actions/kernel-config
