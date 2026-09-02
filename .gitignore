@@ -1,0 +1,8 @@
+# Pi Web local workspace data
+.pi-web/
+
+# Local AI reports / handovers
+*.md
+
+# Keep persistent agent instructions tracked
+!AGENTS.md
