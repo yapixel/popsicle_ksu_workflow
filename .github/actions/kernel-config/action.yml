@@ -19,6 +19,10 @@ inputs:
   enable_susfs:
     required: false
     default: "false"
+  enable_bbrv3:
+    required: false
+    default: "true"
+    description: "Enable BBRv3 TCP congestion control"
 
 runs:
   using: "composite"
@@ -79,6 +83,10 @@ runs:
         set_config CONFIG_TCP_CONG_ADVANCED y "$DEFCONFIG"
         set_config CONFIG_TCP_CONG_BBR y "$DEFCONFIG"
         set_config CONFIG_NET_SCH_FQ y "$DEFCONFIG"
+        if [ "${{ inputs.enable_bbrv3 }}" != "false" ]; then
+          set_config CONFIG_TCP_CONG_BBR3 y "$DEFCONFIG"
+          set_config CONFIG_DEFAULT_BBR3 y "$DEFCONFIG"
+        fi
 
         ########################################
         # IPSet + Netfilter

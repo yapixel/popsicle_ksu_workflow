@@ -29,6 +29,11 @@ on:
           - 'true'
           - 'false'
         default: 'all'
+      enable_bbrv3:
+        description: 'BBRv3 Congestion Control'
+        required: false
+        type: boolean
+        default: true
       ksu_branch:
         description: 'KernelSU Branch'
         required: true
@@ -271,6 +276,12 @@ jobs:
         working-directory: kernel_workspace/common
         run: |
           patch -p1 -l < "${{ github.workspace }}/.github/patches/gki/unicode_bypass_fix.patch" || true
+          if [ "${{ github.event.inputs.enable_bbrv3 != 'false' }}" = "true" ]; then
+            if [ -f "${{ github.workspace }}/.github/patches/gki/bbrv3.patch" ]; then
+              echo "🚀 Applying BBRv3 patch for android16-6.12..."
+              patch -p1 -l < "${{ github.workspace }}/.github/patches/gki/bbrv3.patch"
+            fi
+          fi
           patch -p1 -l --fuzz=3 < "${{ github.workspace }}/.github/patches/xxksu/manual-security-hooks-v2.0.patch"
           patch -p1 -l < "${{ github.workspace }}/.github/patches/xxksu/scope-min-manual-hooks-v2.3.patch"
 
@@ -302,6 +313,7 @@ jobs:
           build_config_path: "kernel_workspace/common/build.config.gki"
           hook_mode: "manual"
           enable_susfs: "${{ matrix.enable_susfs }}"
+          enable_bbrv3: "${{ github.event.inputs.enable_bbrv3 }}"
 
       - name: Build Kernel (Production)
         working-directory: kernel_workspace/common
@@ -617,6 +629,12 @@ jobs:
         working-directory: kernel_workspace/common
         run: |
           patch -p1 -l < "${{ github.workspace }}/.github/patches/gki/unicode_bypass_fix.patch" || true
+          if [ "${{ github.event.inputs.enable_bbrv3 != 'false' }}" = "true" ]; then
+            if [ -f "${{ github.workspace }}/.github/patches/gki/bbrv3.patch" ]; then
+              echo "🚀 Applying BBRv3 patch for android16-6.12..."
+              patch -p1 -l < "${{ github.workspace }}/.github/patches/gki/bbrv3.patch"
+            fi
+          fi
 
       - name: Apply SuSFS Patches
         if: matrix.enable_susfs == 'true'
@@ -646,6 +664,7 @@ jobs:
           build_config_path: "kernel_workspace/common/build.config.gki"
           hook_mode: "lsm"
           enable_susfs: "${{ matrix.enable_susfs }}"
+          enable_bbrv3: "${{ github.event.inputs.enable_bbrv3 }}"
 
       - name: Build Kernel (Production)
         working-directory: kernel_workspace/common
